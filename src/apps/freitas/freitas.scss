@@ -1000,6 +1000,11 @@ body.fp-route .mainDrawerHandle {
         }
     }
 
+    /* instant on TVs: an animated scale repaints the card ~12 times per key press */
+    .layout-tv & {
+        transition: none;
+    }
+
     .layout-tv &:focus {
         transform: scale(1.07);
         outline-offset: u(4);
@@ -1744,5 +1749,83 @@ body.fp-route .mainDrawerHandle {
 
     .fp-art img {
         animation: none;
+    }
+}
+
+/* ---------- TV performance mode ----------
+ * TV chips (Tizen, webOS, Fire TV) have weak GPUs: live blur, masks, filters and
+ * large soft shadows are re-rendered on every focus move and scroll step, which is
+ * what made remote navigation feel slow. Same look, cheaper paint: glass becomes
+ * solid tinted surfaces and only transform/opacity are animated.
+ */
+html.layout-tv {
+    .fp-root *,
+    .fp-header,
+    .fp-header *,
+    .fp-header::before {
+        backdrop-filter: none !important;
+    }
+
+    /* without the blur the bar needs a denser tint so content scrolling under it stays out of the way */
+    .fp-header::before {
+        mask-image: none;
+        background: linear-gradient(180deg, rgba(11, 11, 14, 0.97) 0%, rgba(11, 11, 14, 0.92) 62%, rgba(11, 11, 14, 0) 100%);
+    }
+
+    .fp-glows {
+        display: none;
+    }
+
+    .fp-nav {
+        background: rgba(30, 30, 38, 0.92);
+        box-shadow: none;
+    }
+
+    .fp-action .MuiIconButton-root,
+    .fp-action.fp-btn-icon,
+    .fp-btn-round {
+        background: rgba(44, 44, 54, 0.9);
+        box-shadow: none;
+    }
+
+    .fp-btn-play {
+        box-shadow: none;
+    }
+
+    .fp-plate {
+        background: rgba(18, 18, 24, 0.88);
+        box-shadow: none;
+    }
+
+    .fp-card__frame {
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    }
+
+    .fp-title-art {
+        filter: none !important;
+    }
+
+    .fp-title-art--logo img {
+        filter: none;
+    }
+
+    .fp-hero__img {
+        width: 100%;
+        mask-image: none;
+        animation: none;
+    }
+
+    .fp-hero__body,
+    .fp-art img {
+        animation: none;
+    }
+
+    .fp-hero__syn,
+    .fp-logo {
+        text-shadow: none;
+    }
+
+    .fp-scroller {
+        scroll-behavior: auto;
     }
 }

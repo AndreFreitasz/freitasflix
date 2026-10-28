@@ -282,11 +282,6 @@ function nav(activeElement, direction, container, focusableElements) {
             continue;
         }
 
-        // hidden but still laid out (e.g. closed menus that stay mounted)
-        if (curr.closest('[aria-hidden="true"]') || getComputedStyle(curr).visibility === 'hidden') {
-            continue;
-        }
-
         switch (direction) {
             case 0:
                 // left
@@ -374,10 +369,18 @@ function nav(activeElement, direction, container, focusableElements) {
             dist += 100000;
         }
 
-        if (dist < minDistance) {
-            nearestElement = curr;
-            minDistance = dist;
+        if (dist >= minDistance) {
+            continue;
         }
+
+        // Hidden but still laid out (e.g. closed menus that stay mounted). Checked only for
+        // candidates that would win, since getComputedStyle is slow on TVs.
+        if (curr.closest('[aria-hidden="true"]') || getComputedStyle(curr).visibility === 'hidden') {
+            continue;
+        }
+
+        nearestElement = curr;
+        minDistance = dist;
     }
 
     if (nearestElement) {
