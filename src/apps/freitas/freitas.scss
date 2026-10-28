@@ -1813,20 +1813,6 @@ body.fp-route .mainDrawerHandle {
     margin-right: u(6);
 }
 
-.fp-rating--setup {
-    padding: 0 u(12);
-    border-radius: 999px;
-    border: 1px dashed rgba(255, 255, 255, 0.3);
-    font-size: u(13);
-    color: var(--fp-ink-2);
-
-    &:hover,
-    &:focus-visible {
-        color: #fff;
-        border-color: rgba(255, 255, 255, 0.6);
-    }
-}
-
 /* Metacritic: the score in its colour box */
 .fp-mc {
     display: inline-flex;

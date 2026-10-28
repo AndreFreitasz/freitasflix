@@ -7,7 +7,6 @@ import layoutManager from 'components/layoutManager';
 
 import {
     combineRatings,
-    getOmdbKey,
     metascoreTone,
     shortBadge,
     techBadges,
@@ -28,10 +27,9 @@ const Metascore: FC<{ score: number, small?: boolean }> = ({ score, small }) => 
 export const RatingsRow: FC<{ item: BaseItemDto }> = ({ item }) => {
     const { data: omdb } = useOmdb(item);
     const r = combineRatings(item, omdb);
-    const hasKey = !!getOmdbKey();
     const any = r.tmdb || r.rottenTomatoes != null || r.metascore != null;
 
-    if (!any && (hasKey || layoutManager.tv)) return null;
+    if (!any) return null;
 
     return (
         <div className='fp-ratings'>
@@ -58,9 +56,6 @@ export const RatingsRow: FC<{ item: BaseItemDto }> = ({ item }) => {
                     <Metascore score={r.metascore} />
                     <span className='fp-rating__src'>Metacritic</span>
                 </span>
-            )}
-            {!hasKey && !layoutManager.tv && (
-                <a className='fp-rating fp-rating--setup' href='#/notas'>Ativar Metacritic</a>
             )}
         </div>
     );
