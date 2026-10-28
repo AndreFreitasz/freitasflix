@@ -59,7 +59,9 @@ body.fp-route .mainDrawerHandle {
     position: relative;
     min-height: 100vh;
     width: 100%;
-    overflow-x: hidden;
+
+    /* never a scroll container of its own: the page itself must scroll (iOS) */
+    overflow: visible;
     background: var(--fp-bg);
     color: var(--fp-ink);
     font-family: var(--fp-font);
@@ -103,7 +105,17 @@ body.fp-route .mainDrawerHandle {
     }
 }
 
-/* Coloured light behind the glass */
+/* Coloured light behind the glass, clipped so it never makes the page taller */
+.fp-glows {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
 .fp-glow {
     position: absolute;
     pointer-events: none;

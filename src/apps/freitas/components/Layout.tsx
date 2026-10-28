@@ -49,9 +49,11 @@ const FreitasPage: FC<PropsWithChildren<FreitasPageProps>> = ({ id, title, child
             isBackButtonEnabled={false}
         >
             <div className='fp-root' ref={rootRef}>
-                <div className='fp-glow fp-glow--a' aria-hidden='true' />
-                <div className='fp-glow fp-glow--b' aria-hidden='true' />
-                <div className='fp-glow fp-glow--c' aria-hidden='true' />
+                <div className='fp-glows' aria-hidden='true'>
+                    <div className='fp-glow fp-glow--a' />
+                    <div className='fp-glow fp-glow--b' />
+                    <div className='fp-glow fp-glow--c' />
+                </div>
                 <Header overlay />
                 {children}
             </div>
