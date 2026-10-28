@@ -55,9 +55,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: web
     steps:
-      - name: Checkout
+      - name: Checkout (only the icon)
         uses: actions/checkout@v4
         with:
+          path: repo
           sparse-checkout: tizen
 
       - name: Download web build
@@ -109,7 +110,8 @@ jobs:
           sed -i 's|id="http://jellyfin.org/Jellyfin"|id="http://jellyfin.org/FreitasPlus"|' config.xml
           sed -i 's|<name>Jellyfin</name>|<name>Freitas+</name>|' config.xml
           sed -i "s|appName: 'Jellyfin for Tizen'|appName: 'Freitas+ Samsung'|" tizen.js
-          cp ../tizen/icon.png icon.png
+          cp ../repo/tizen/icon.png icon.png
+          rm -rf ../repo  # its babel/npm config must not leak into this build
           cat config.xml
 
       - name: Bundle the Freitas+ web build
