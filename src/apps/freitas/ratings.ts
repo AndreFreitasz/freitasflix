@@ -155,7 +155,13 @@ export function parseMdblist(json: { ratings?: MdblistRating[] }): ExternalRatin
     return out;
 }
 
-class RatingsKeyError extends Error {}
+// A plain flag instead of an Error subclass: `instanceof` on Error subclasses breaks
+// once the code is transpiled for old TV browsers.
+const KEY_ERROR = 'fpKeyError';
+function keyError(message: string): Error {
+    return Object.assign(new Error(message), { [KEY_ERROR]: true });
+}
+const isKeyError = (err: unknown) => !!(err && typeof err === 'object' && (err as Record<string, unknown>)[KEY_ERROR]);
 
 export async function fetchMdblist(path: string, key: string, signal?: AbortSignal): Promise<ExternalRatings> {
     const res = await fetch(`https://api.mdblist.com/${path}?apikey=${encodeURIComponent(key)}`, { signal });
@@ -163,7 +169,7 @@ export async function fetchMdblist(path: string, key: string, signal?: AbortSign
         pauseForAnHour();
         throw new Error('Limite diário do MDBList atingido');
     }
-    if (res.status === 401 || res.status === 403) throw new RatingsKeyError('Chave do MDBList inválida');
+    if (res.status === 401 || res.status === 403) throw keyError('a chave do MDBList é inválida');
     if (res.status === 404) return {};
     if (!res.ok) throw new Error(`MDBList respondeu ${res.status}`);
     return parseMdblist(await res.json() as { ratings?: MdblistRating[] });
@@ -195,7 +201,7 @@ export async function fetchOmdb(imdbId: string, key: string, signal?: AbortSigna
     const res = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${encodeURIComponent(key)}`, { signal });
     const json = await res.json() as Record<string, unknown>;
     if (json.Response !== 'False') return parseOmdb(json);
-    if (String(json.Error || '').toLowerCase().includes('api key')) throw new RatingsKeyError(String(json.Error));
+    if (String(json.Error || '').toLowerCase().includes('api key')) throw keyError('OMDb: ' + String(json.Error));
     return {};
 }
 
@@ -266,7 +272,7 @@ async function testMdblist(key: string): Promise<string> {
         const sample = parts.length ? ` (Um Sonho de Liberdade: ${parts.join(', ')})` : '';
         return `MDBList funcionando${sample}.`;
     } catch (err) {
-        if (err instanceof RatingsKeyError) throw err;
+        if (isKeyError(err)) throw err;
         const reason = err instanceof Error ? err.message : 'erro';
         return `MDBList: não deu para testar daqui (${reason}). A chave foi salva mesmo assim.`;
     }
@@ -277,8 +283,17 @@ async function testOmdb(key: string): Promise<string> {
     return 'OMDb funcionando' + (r.metascore != null ? ` (Metacritic ${r.metascore})` : '') + '.';
 }
 
+/** Keys are short codes: catch a pasted address or text before calling the services. */
+function checkKeyShape(name: string, key: string) {
+    if (key && (/[\s/:]/.test(key) || key.length > 64)) {
+        throw keyError(`o campo ${name} tem um endereço ou texto, não a chave. Cole só o código da chave`);
+    }
+}
+
 /** Checks the keys against a well-known title; used by the settings page. */
 export async function testKeys(mdblistKey: string, omdbKey: string): Promise<string[]> {
+    checkKeyShape('do MDBList', mdblistKey);
+    checkKeyShape('do OMDb', omdbKey);
     const lines: string[] = [];
     if (mdblistKey) lines.push(await testMdblist(mdblistKey));
     if (omdbKey) lines.push(await testOmdb(omdbKey));

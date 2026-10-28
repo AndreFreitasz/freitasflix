@@ -1483,6 +1483,27 @@ body.fp-route .mainDrawerHandle {
     overflow: hidden;
 }
 
+.fp-ep__meta {
+    display: flex;
+    align-items: center;
+    margin-top: u(4);
+    font-size: u(13);
+    color: var(--fp-muted);
+}
+
+.fp-ep__rating {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 700;
+    color: #fff;
+    margin-right: u(12);
+}
+
+/* duration moves here when the right column is hidden (tablets/phones) */
+.fp-ep__meta-dur {
+    display: none;
+}
+
 .fp-ep__dur {
     font-size: u(14);
     color: var(--fp-muted);
@@ -1648,6 +1669,10 @@ body.fp-route .mainDrawerHandle {
 
     .fp-ep__dur {
         display: none;
+    }
+
+    .fp-ep__meta-dur {
+        display: inline;
     }
 
     .fp-hero__img {
@@ -1943,6 +1968,12 @@ body.fp-route .mainDrawerHandle {
     > * {
         margin-bottom: u(4);
     }
+}
+
+/* smaller source pill inside episode rows */
+.fp-ep__src {
+    font-size: u(10);
+    padding: u(1) u(5);
 }
 
 /* ---------- Settings (notas) ---------- */

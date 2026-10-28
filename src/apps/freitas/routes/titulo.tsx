@@ -32,6 +32,7 @@ import {
     audioSubtitleLabel,
     backdropWidth,
     episodeCode,
+    formatRating,
     formatRuntime,
     imageUrl,
     itemHue,
@@ -139,6 +140,8 @@ const EpisodeRow: FC<{ ep: BaseItemDto }> = ({ ep }) => {
     const thumb = imageUrl(api, ep, ImageType.Primary, 260);
     const played = !!ep.UserData?.Played;
     const onClick = useCallback(() => playItem(ep), [ ep ]);
+    const rating = ep.CommunityRating ? formatRating(ep.CommunityRating) : '';
+    const runtime = formatRuntime(ep.RunTimeTicks);
     return (
         <button
             type='button'
@@ -161,9 +164,20 @@ const EpisodeRow: FC<{ ep: BaseItemDto }> = ({ ep }) => {
             </div>
             <div className='fp-ep__text'>
                 <span className='fp-ep__title'>{ep.Name}</span>
+                {(rating || runtime) && (
+                    <span className='fp-ep__meta'>
+                        {rating && (
+                            <span className='fp-ep__rating' title='Nota do episódio no TMDB'>
+                                <span className='fp-rating__src fp-rating__src--tmdb fp-ep__src'>TMDB</span>
+                                {rating}
+                            </span>
+                        )}
+                        {runtime && <span className='fp-ep__meta-dur'>{runtime}</span>}
+                    </span>
+                )}
                 {ep.Overview && <span className='fp-ep__syn'>{ep.Overview}</span>}
             </div>
-            <span className='fp-ep__dur'>{formatRuntime(ep.RunTimeTicks)}</span>
+            <span className='fp-ep__dur'>{runtime}</span>
         </button>
     );
 };
