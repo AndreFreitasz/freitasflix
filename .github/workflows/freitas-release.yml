@@ -93,7 +93,7 @@ jobs:
           sed -i "s|${GITHUB_WORKSPACE}/freitascert.pwd|1234|g" "$P"
           sed -i "s|${GITHUB_WORKSPACE}/tizen-studio-data/tools/certificate-generator/certificates/distributor/tizen-distributor-signer.pwd|tizenpkcs12passfordsigner|g" "$P"
           sed -i 's|password=""|password="tizenpkcs12passfordsigner"|g' "$P"
-          cat "$P"
+          grep -o 'password="[^"]*"' "$P" | sed 's/^/::notice::profile /'
 
       - name: Clone jellyfin-tizen
         uses: actions/checkout@v4
@@ -114,11 +114,20 @@ jobs:
 
       - name: Bundle the Freitas+ web build
         working-directory: jellyfin-tizen
-        run: JELLYFIN_WEB_DIR=../web/dist npm ci --no-audit
+        run: |
+          ls ../web | sed 's/^/::notice::web: /'
+          if ! JELLYFIN_WEB_DIR="$(cd ../web/dist && pwd)" npm ci --no-audit > ../bundle.log 2>&1; then
+            tail -40 ../bundle.log | sed 's/^/::error::/'
+            exit 1
+          fi
 
       - name: Build widget
         working-directory: jellyfin-tizen
-        run: tizen build-web -e ".*" -e gulpfile.babel.js -e gulpfile.js -e README.md -e "node_modules/*" -e "package*.json" -e "yarn.lock"
+        run: |
+          if ! tizen build-web -e ".*" -e gulpfile.babel.js -e gulpfile.js -e README.md -e "node_modules/*" -e "package*.json" -e "yarn.lock" > ../buildweb.log 2>&1; then
+            tail -40 ../buildweb.log | sed 's/^/::error::/'
+            exit 1
+          fi
 
       - name: Package WGT
         working-directory: jellyfin-tizen
@@ -133,8 +142,12 @@ jobs:
             eof
           }
           EOF
-          expect -f package.exp
-          ls -la release
+          expect -f package.exp > ../package.log 2>&1 || true
+          if ! ls release/*.wgt > /dev/null 2>&1; then
+            tail -40 ../package.log | sed 's/^/::error::/'
+            tail -40 "${GITHUB_WORKSPACE}/tizen-studio-data/cli/logs/cli.log" | sed 's/^/::error::/' || true
+            exit 1
+          fi
           mv release/*.wgt ../Freitas-Samsung.wgt
 
       - name: Print logs
