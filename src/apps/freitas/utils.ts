@@ -190,7 +190,7 @@ const LANGS: Record<string, string> = {
     rus: 'Russo', ru: 'Russo'
 };
 
-function languageName(stream: MediaStream): string {
+export function languageName(stream: MediaStream): string {
     const code = (stream.Language || '').toLowerCase();
     return LANGS[code] || (code ? code.toUpperCase() : '');
 }

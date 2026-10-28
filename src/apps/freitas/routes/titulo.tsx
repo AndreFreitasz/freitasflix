@@ -25,8 +25,9 @@ import { setActiveLibrary } from '../components/Header';
 import { MetaLine, TitleArt } from '../components/Hero';
 import { Icon, PlayGlyph } from '../components/Icons';
 import { RatingsRow, TechChips } from '../components/Ratings';
+import { TrackPickers, useTrackSelection } from '../components/Tracks';
 import FreitasPage from '../components/Layout';
-import { playItem, playTrailer } from '../playback';
+import { type PlayTracks, playItem, playTrailer } from '../playback';
 import { useItemDetails } from '../ratings';
 import {
     audioSubtitleLabel,
@@ -55,9 +56,16 @@ const InfoBlock: FC<{ label: string, value?: string }> = ({ label, value }) => {
     );
 };
 
-const PlayButton: FC<{ target: BaseItemDto, label: string, focusOnTv?: boolean }> = ({ target, label, focusOnTv }) => {
+interface PlayButtonProps {
+    target: BaseItemDto
+    label: string
+    focusOnTv?: boolean
+    tracks?: PlayTracks
+}
+
+const PlayButton: FC<PlayButtonProps> = ({ target, label, focusOnTv, tracks }) => {
     const ref = useRef<HTMLButtonElement>(null);
-    const onClick = useCallback(() => playItem(target), [ target ]);
+    const onClick = useCallback(() => playItem(target, false, tracks), [ target, tracks ]);
     useEffect(() => {
         // TV remotes need a starting point
         if (focusOnTv && layoutManager.tv) ref.current?.focus();
@@ -319,6 +327,7 @@ const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem }
     const backdrop = imageUrl(api, item, ImageType.Backdrop, backdropWidth(720), 2400);
     const h = itemHue(item);
     const kind = kindLabel(item);
+    const trackSel = useTrackSelection(playTarget);
 
     return (
         <section className='fp-hero fp-hero--title'>
@@ -344,11 +353,12 @@ const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem }
                 </div>
                 {item.Overview && <p className='fp-hero__syn fp-hero__syn--wide'>{item.Overview}</p>}
                 <div className='fp-actions-row'>
-                    <PlayButton target={playTarget} label={playLabel} focusOnTv />
+                    <PlayButton target={playTarget} label={playLabel} focusOnTv tracks={trackSel.tracks} />
                     <ListButton item={item} />
                     <FavoriteButton item={item} />
                     <TrailerButton item={item} />
                 </div>
+                <TrackPickers sel={trackSel} />
             </div>
         </section>
     );

@@ -16,6 +16,7 @@ const PATHS: Record<string, React.ReactNode> = {
     check: <path d='m5 12.5 4.5 4.5L19 7.5' />,
     info: <><circle cx='12' cy='12' r='9' /><path d='M12 11v5.5M12 7.5h.01' /></>,
     chevronRight: <path d='m9 6 6 6-6 6' />,
+    chevronDown: <path d='m6 9 6 6 6-6' />,
     chevronLeft: <path d='m15 6-6 6 6 6' />,
     trailer: <><rect x='2' y='4' width='20' height='16' rx='3' /><path d='m10 9 5 3-5 3z' fill='currentColor' /></>
 };
