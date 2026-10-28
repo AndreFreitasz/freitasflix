@@ -9,3 +9,9 @@ declare module '*.scss' {
     const value: string;
     export default value;
 }
+
+declare module '*.svg' {
+    // image imports are handled by the bundler (asset/resource)
+    const value: string;
+    export default value;
+}

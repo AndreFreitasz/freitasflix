@@ -581,6 +581,11 @@ export function scrollToElement(element, smooth) {
 
 if (isEnabled()) {
     dom.addEventListener(window, 'focusin', function(e) {
+        // Freitas+ screens keep focus visible themselves (instant scroll); a second,
+        // animated scroll here made every key press fight with it on TVs.
+        if (e.target?.closest?.('.fp-root, .fp-header')) {
+            return;
+        }
         setTimeout(function() {
             scrollToElement(e.target, useSmoothScroll());
         }, 0);

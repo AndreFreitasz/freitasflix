@@ -16,6 +16,7 @@ import {
     remainingLabel
 } from '../utils';
 import { Icon, PlayGlyph } from './Icons';
+import { CardInsight, useCardActive } from './Ratings';
 
 export function itemUrl(item: BaseItemDto): string {
     try {
@@ -51,17 +52,21 @@ const Plate: FC<{ eyebrow?: string, title: string, compact?: boolean }> = ({ eye
     </div>
 );
 
+const hasInsight = (item: BaseItemDto) => item.Type === 'Movie' || item.Type === 'Series';
+
 export const PosterCard: FC<{ item: BaseItemDto, showNew?: boolean }> = ({ item, showNew }) => {
     const { api } = useApi();
+    const { active, handlers } = useCardActive();
     const title = item.Type === 'Episode' ? (item.SeriesName || item.Name || '') : (item.Name || '');
     return (
-        <a className='fp-card fp-card--poster' href={itemUrl(item)} aria-label={title}>
+        <a className='fp-card fp-card--poster' href={itemUrl(item)} aria-label={title} {...handlers}>
             <div className='fp-card__frame fp-ratio-poster'>
                 <Art src={imageUrl(api, item, ImageType.Primary, 220)} item={item} />
                 <div className='fp-sheen' aria-hidden='true' />
-                {showNew && isRecent(item) && (
+                {showNew && isRecent(item) && !active && (
                     <span className='fp-badge fp-glass'><span className='fp-badge__dot' />Novo</span>
                 )}
+                {active && hasInsight(item) && <CardInsight item={item} />}
                 <Plate eyebrow={plateLabel(item)} title={title} />
             </div>
         </a>
@@ -70,16 +75,19 @@ export const PosterCard: FC<{ item: BaseItemDto, showNew?: boolean }> = ({ item,
 
 export const RankCard: FC<{ item: BaseItemDto, rank: number }> = ({ item, rank }) => {
     const { api } = useApi();
+    const { active, handlers } = useCardActive();
     return (
         <a
             className='fp-card fp-card--rank'
             href={itemUrl(item)}
             aria-label={`${rank}º: ${item.Name}`}
+            {...handlers}
         >
             <span className='fp-rank__num' aria-hidden='true'>{rank}</span>
             <div className='fp-card__frame fp-ratio-poster fp-rank__poster'>
                 <Art src={imageUrl(api, item, ImageType.Primary, 160)} item={item} />
                 <div className='fp-sheen' aria-hidden='true' />
+                {active && hasInsight(item) && <CardInsight item={item} />}
                 <Plate title={item.Name || ''} compact />
             </div>
         </a>

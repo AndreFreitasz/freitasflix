@@ -29,7 +29,7 @@ export const Component = () => {
     const isDrawerAvailable = isDrawerPath(location.pathname) && Boolean(user) && !isMediumScreen;
     const isDrawerOpen = isDrawerActive && isDrawerAvailable;
     // Freitas+ pages draw their own floating header; the video player has none
-    const isFreitasPage = location.pathname === '/home' || location.pathname === '/titulo';
+    const isFreitasPage = [ '/home', '/titulo', '/notas' ].includes(location.pathname);
     const isVideoPage = location.pathname === '/video';
 
     const onToggleDrawer = useCallback(() => {

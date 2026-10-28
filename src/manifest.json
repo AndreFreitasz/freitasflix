@@ -1,11 +1,11 @@
 {
-    "name": "Jellyfin",
-    "description": "The Free Software Media System",
-    "lang": "en-US",
-    "short_name": "Jellyfin",
+    "name": "Freitas+",
+    "description": "Freitas+ — filmes, séries e animes",
+    "lang": "pt-BR",
+    "short_name": "Freitas+",
     "start_url": "index.html#/home",
-    "theme_color": "#101010",
-    "background_color": "#101010",
+    "theme_color": "#0b0b0e",
+    "background_color": "#0b0b0e",
     "display": "standalone",
     "icons": [
         {

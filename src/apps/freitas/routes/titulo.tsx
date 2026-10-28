@@ -24,8 +24,10 @@ import { PosterCard, Row, itemUrl } from '../components/Cards';
 import { setActiveLibrary } from '../components/Header';
 import { MetaLine, TitleArt } from '../components/Hero';
 import { Icon, PlayGlyph } from '../components/Icons';
+import { RatingsRow, TechChips } from '../components/Ratings';
 import FreitasPage from '../components/Layout';
 import { playItem, playTrailer } from '../playback';
+import { useItemDetails } from '../ratings';
 import {
     audioSubtitleLabel,
     backdropWidth,
@@ -291,7 +293,14 @@ function getCreators(item: BaseItemDto) {
     return directors.length ? directors : writers;
 }
 
-const TitleHero: FC<{ item: BaseItemDto, playTarget: BaseItemDto, playLabel: string }> = ({ item, playTarget, playLabel }) => {
+interface TitleHeroProps {
+    item: BaseItemDto
+    playTarget: BaseItemDto
+    playLabel: string
+    techItem?: BaseItemDto | null
+}
+
+const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem }) => {
     const { api } = useApi();
     const backdrop = imageUrl(api, item, ImageType.Backdrop, backdropWidth(720), 2400);
     const h = itemHue(item);
@@ -314,7 +323,11 @@ const TitleHero: FC<{ item: BaseItemDto, playTarget: BaseItemDto, playLabel: str
             <div className='fp-hero__body fp-hero__body--title fp-pad'>
                 {kind && <div className='fp-kind'><span className='fp-kind__dot' />{kind}</div>}
                 <TitleArt item={item} />
-                <MetaLine item={item} maxGenres={3} />
+                <MetaLine item={item} maxGenres={3} showScore={false} />
+                <div className='fp-ratings-wrap'>
+                    <RatingsRow item={item} />
+                    <TechChips item={techItem} />
+                </div>
                 {item.Overview && <p className='fp-hero__syn fp-hero__syn--wide'>{item.Overview}</p>}
                 <div className='fp-actions-row'>
                     <PlayButton target={playTarget} label={playLabel} focusOnTv />
@@ -332,6 +345,7 @@ const TitleView: FC<{ item: BaseItemDto }> = ({ item }) => {
     const seriesId = isSeries ? item.Id || undefined : undefined;
     const { data: nextUp } = useSeriesNextUp(seriesId);
     const { data: firstEp } = useFirstEpisode(seriesId);
+    const { data: firstEpFull } = useItemDetails(firstEp?.Id);
     const { data: extras } = useExtras(item.Id || undefined);
     const { data: similar } = useSimilar(item.Id || undefined);
 
@@ -353,7 +367,7 @@ const TitleView: FC<{ item: BaseItemDto }> = ({ item }) => {
 
     return (
         <>
-            <TitleHero item={item} playTarget={playTarget} playLabel={playLabel} />
+            <TitleHero item={item} playTarget={playTarget} playLabel={playLabel} techItem={isSeries ? firstEpFull : item} />
 
             <main className='fp-title-main'>
                 <div className='fp-info fp-pad'>

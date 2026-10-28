@@ -8,6 +8,7 @@ import SyncPlayButton from 'apps/modern/components/AppToolbar/SyncPlayButton';
 import { appRouter } from 'components/router/appRouter';
 import UserMenuButton from 'components/toolbar/UserMenuButton';
 import { useApi } from 'hooks/useApi';
+import logo from 'assets/freitas/logo.png';
 
 import { useLibraries } from '../api';
 import { Icon } from './Icons';
@@ -69,7 +70,7 @@ const Header: FC<HeaderProps> = ({ overlay = false, inline = false }) => {
     return (
         <header className={classNames('fp-header', 'focus-lowpriority', { 'fp-header--overlay': overlay, 'fp-header--inline': inline })}>
             <a className='fp-brand' href='#/home' aria-label='FREITAS+ — início'>
-                <span className='fp-logo'>FREITAS<span className='fp-logo__plus'>+</span></span>
+                <img className='fp-logo' src={logo} alt='FREITAS+' width={610} height={120} />
             </a>
 
             <nav className='fp-nav' aria-label='Principal'>

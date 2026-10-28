@@ -48,6 +48,12 @@ const config = {
     },
     resolve: {
         extensions: ['.tsx', '.ts', '.js'],
+        // Freitas+ branding: the stock Jellyfin logo/icon imports resolve to ours
+        alias: {
+            '@jellyfin/ux-web/icon-transparent.png$': path.resolve(__dirname, 'src/assets/freitas/icon-transparent.png'),
+            '@jellyfin/ux-web/banner-light.png$': path.resolve(__dirname, 'src/assets/freitas/logo-large.png'),
+            '@jellyfin/ux-web/banner-dark.png$': path.resolve(__dirname, 'src/assets/freitas/logo-large.png')
+        },
         modules: [
             path.resolve(__dirname, 'src'),
             path.resolve(__dirname, 'node_modules')
@@ -86,7 +92,7 @@ const config = {
                 'robots.txt',
                 {
                     from: 'touchicon*.png',
-                    context: path.resolve(__dirname, 'node_modules/@jellyfin/ux-web/favicons'),
+                    context: path.resolve(__dirname, 'src/assets/freitas/favicons'),
                     to: 'favicons'
                 },
                 ...Assets.map(asset => {

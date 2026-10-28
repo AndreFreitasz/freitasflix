@@ -42,7 +42,11 @@ export const TitleArt: FC<{ item: BaseItemDto, level?: 'h1' | 'h2' }> = ({ item,
     const lead = words.length > 1 ? words.slice(0, -1).join(' ') : '';
     const main = words.length > 1 ? words[words.length - 1] : name;
     const h = itemHue(item);
-    const long = main.length > 9;
+    // size by the longest word so it never breaks mid-word
+    const longest = Math.max(...name.split(' ').map(w => w.length));
+    let size = '';
+    if (longest > 11) size = ' fp-title-art__main--xlong';
+    else if (longest > 7) size = ' fp-title-art__main--long';
 
     return (
         <Tag
@@ -52,7 +56,7 @@ export const TitleArt: FC<{ item: BaseItemDto, level?: 'h1' | 'h2' }> = ({ item,
         >
             {lead && <span className='fp-title-art__lead' aria-hidden='true'>{lead}</span>}
             <span
-                className={'fp-title-art__main' + (long ? ' fp-title-art__main--long' : '')}
+                className={'fp-title-art__main' + size}
                 aria-hidden='true'
                 style={{ backgroundImage: `linear-gradient(180deg, #ffffff 0%, hsl(${h} 90% 85%) 48%, hsl(${h} 85% 66%) 100%)` }}
             >{main}</span>
@@ -78,6 +82,7 @@ export const MetaLine: FC<{ item: BaseItemDto, showScore?: boolean, maxGenres?: 
 
 const ROTATE_MS = 8000;
 const SWIPE_MIN = 45;
+const KEYS_IDLE_MS = 4000;
 
 interface HeroDotProps {
     index: number
@@ -118,7 +123,7 @@ function canHover() {
     }
 }
 
-type PauseReason = 'hover' | 'focus' | 'offscreen' | 'hidden' | 'touch';
+type PauseReason = 'hover' | 'focus' | 'offscreen' | 'hidden' | 'touch' | 'keys';
 
 /**
  * Auto-advancing slides. The timer keeps its remaining time across pauses so
@@ -154,6 +159,23 @@ function useRotation(count: number) {
         const onVisibility = () => setPaused('hidden', !!document.hidden);
         document.addEventListener('visibilitychange', onVisibility);
         return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, [ setPaused ]);
+
+    // TVs: hold the slide while the remote is being used (a slide change decodes a
+    // full-screen image, which would stutter navigation), resume after a few idle seconds
+    useEffect(() => {
+        if (!layoutManager.tv) return;
+        let idle: number | undefined;
+        const onKey = () => {
+            setPaused('keys', true);
+            window.clearTimeout(idle);
+            idle = window.setTimeout(() => setPaused('keys', false), KEYS_IDLE_MS);
+        };
+        document.addEventListener('keydown', onKey, true);
+        return () => {
+            document.removeEventListener('keydown', onKey, true);
+            window.clearTimeout(idle);
+        };
     }, [ setPaused ]);
 
     const go = useCallback((delta: number) => {

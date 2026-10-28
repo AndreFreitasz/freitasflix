@@ -43,6 +43,12 @@ body.fp-route {
 }
 
 /* The stock legacy header (TV / classic layouts) is replaced by ours on Freitas pages */
+
+/* Jellyfin's rotating page backdrop sits behind our opaque pages: don't render it */
+body.fp-route .backdropContainer {
+    display: none;
+}
+
 body.fp-route .skinHeader,
 body.fp-route .mainDrawerHandle {
     display: none !important;
@@ -246,17 +252,9 @@ body.fp-route .mainDrawerHandle {
 }
 
 .fp-logo {
-    font-size: u(26);
-    line-height: u(28);
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    white-space: nowrap;
-    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
-}
-
-.fp-logo__plus {
-    color: var(--fp-pink);
-    margin-left: 1px;
+    display: block;
+    height: u(34);
+    width: auto;
 }
 
 /* Inside the modern layout's app bar on the other pages */
@@ -435,7 +433,7 @@ body.fp-route .mainDrawerHandle {
     }
 
     .fp-logo {
-        font-size: u(20);
+        height: u(26);
     }
 
     .fp-action--extra {
@@ -597,11 +595,15 @@ body.fp-route .mainDrawerHandle {
     font-weight: 900;
     background-clip: text;
     color: transparent;
-    word-break: break-word;
+    overflow-wrap: normal;
 }
 
 .fp-title-art__main--long {
-    font-size: u(84);
+    font-size: u(92);
+}
+
+.fp-title-art__main--xlong {
+    font-size: u(68);
 }
 
 .fp-title-art--logo img {
@@ -1689,7 +1691,11 @@ body.fp-route .mainDrawerHandle {
     }
 
     .fp-title-art__main--long {
-        font-size: u(44);
+        font-size: u(46);
+    }
+
+    .fp-title-art__main--xlong {
+        font-size: u(34);
     }
 
     .fp-title-art--logo img {
@@ -1752,6 +1758,231 @@ body.fp-route .mainDrawerHandle {
     }
 }
 
+/* ---------- Ratings & tech badges ---------- */
+
+.fp-ratings-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+
+    > * {
+        margin: u(4) u(16) u(4) 0;
+    }
+}
+
+.fp-ratings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.fp-rating {
+    display: inline-flex;
+    align-items: center;
+    height: u(30);
+    margin-right: u(18);
+    font-size: u(15);
+    font-weight: 600;
+    color: var(--fp-ink-2);
+}
+
+.fp-rating__src {
+    font-size: u(12);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--fp-ink-3, #9a9aa6);
+    margin-left: u(6);
+}
+
+.fp-rating__src--tmdb {
+    margin: 0 u(6) 0 0;
+    padding: u(2) u(6);
+    border-radius: u(5);
+    color: #0d253f;
+    background: linear-gradient(90deg, #90cea1, #01b4e4);
+}
+
+.fp-rating__val {
+    color: #fff;
+    font-weight: 700;
+}
+
+.fp-rating__icon {
+    width: u(18);
+    height: u(18);
+    margin-right: u(6);
+}
+
+.fp-rating--setup {
+    padding: 0 u(12);
+    border-radius: 999px;
+    border: 1px dashed rgba(255, 255, 255, 0.3);
+    font-size: u(13);
+    color: var(--fp-ink-2);
+
+    &:hover,
+    &:focus-visible {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.6);
+    }
+}
+
+/* Metacritic: the score in its colour box */
+.fp-mc {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: u(30);
+    height: u(30);
+    padding: 0 u(4);
+    border-radius: u(6);
+    font-size: u(15);
+    font-weight: 800;
+    color: #fff;
+}
+
+.fp-mc--good {
+    background: #3a9a28;
+}
+
+.fp-mc--mixed {
+    background: #f2c12e;
+    color: #1a1a1a;
+}
+
+.fp-mc--bad {
+    background: #d8342b;
+}
+
+.fp-mc--small {
+    min-width: u(26);
+    height: u(22);
+    font-size: u(12);
+    border-radius: u(5);
+}
+
+.fp-tech {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.fp-tech__chip {
+    display: inline-flex;
+    align-items: center;
+    height: u(24);
+    padding: 0 u(8);
+    margin-right: u(6);
+    border-radius: u(6);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    font-size: u(12);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #ececf1;
+    white-space: nowrap;
+}
+
+.fp-tech__chip--small {
+    height: u(22);
+    padding: 0 u(6);
+    margin: 0 0 0 u(4);
+    font-size: u(11);
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(11, 11, 14, 0.78);
+}
+
+/* Shown on a hovered / focused card: top-left, above the art */
+.fp-insight {
+    position: absolute;
+    top: u(8);
+    left: u(8);
+    right: u(8);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    pointer-events: none;
+
+    > .fp-mc {
+        margin-right: u(2);
+    }
+
+    > * {
+        margin-bottom: u(4);
+    }
+}
+
+/* ---------- Settings (notas) ---------- */
+
+.fp-settings {
+    max-width: u(760);
+    padding-top: calc(var(--fp-header-h) + #{u(32)});
+    padding-bottom: u(64);
+}
+
+.fp-settings__title {
+    font-size: u(34);
+    font-weight: 800;
+    margin-bottom: u(12) !important;
+}
+
+.fp-settings__text,
+.fp-settings__steps {
+    color: var(--fp-ink-2);
+    font-size: u(16);
+    line-height: 1.6;
+    margin-bottom: u(16) !important;
+
+    a {
+        color: #c4b5fd;
+        text-decoration: underline;
+    }
+}
+
+.fp-settings__steps {
+    padding-left: u(20);
+}
+
+.fp-settings__form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: u(8);
+}
+
+.fp-settings__input {
+    flex: 1 1 u(260);
+    height: u(52);
+    margin: 0 u(12) u(12) 0;
+    padding: 0 u(16);
+    border-radius: u(12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font: inherit;
+    font-size: u(16);
+
+    &:focus {
+        border-color: var(--fp-purple);
+    }
+}
+
+.fp-settings__form .fp-btn-play {
+    margin-bottom: u(12);
+}
+
+.fp-settings__status {
+    margin-top: u(8) !important;
+    font-size: u(15);
+}
+
+.fp-settings__status--ok {
+    color: #86efac;
+}
+
+.fp-settings__status--error {
+    color: #fca5a5;
+}
+
 /* ---------- TV performance mode ----------
  * TV chips (Tizen, webOS, Fire TV) have weak GPUs: live blur, masks, filters and
  * large soft shadows are re-rendered on every focus move and scroll step, which is
@@ -1772,8 +2003,14 @@ html.layout-tv {
         background: linear-gradient(180deg, rgba(11, 11, 14, 0.97) 0%, rgba(11, 11, 14, 0.92) 62%, rgba(11, 11, 14, 0) 100%);
     }
 
-    .fp-glows {
+    .fp-glows,
+    .fp-sheen {
         display: none;
+    }
+
+    /* the active dot is a plain bar: no per-frame animation on TVs */
+    .fp-dot__fill {
+        animation: none;
     }
 
     .fp-nav {
@@ -1820,8 +2057,7 @@ html.layout-tv {
         animation: none;
     }
 
-    .fp-hero__syn,
-    .fp-logo {
+    .fp-hero__syn {
         text-shadow: none;
     }
 

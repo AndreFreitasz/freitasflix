@@ -689,7 +689,7 @@ let navDrawerInstance;
 let mainDrawerButton;
 let headerHomeButton;
 let currentDrawerType;
-let documentTitle = 'Jellyfin';
+const documentTitle = 'Freitas+';
 let pageTitleElement;
 let headerBackButton;
 let headerUserButton;
@@ -725,8 +725,8 @@ function setTabs (type, selectedIndex, builder) {
 const fetchServerName = (_apiClient) => {
     _apiClient
         ?.getPublicSystemInfo()
-        .then(({ ServerName }) => {
-            documentTitle = ServerName || documentTitle;
+        .then(() => {
+            // Freitas+: the tab keeps the brand name instead of the server name
             document.title = documentTitle;
         })
         .catch(err => {
