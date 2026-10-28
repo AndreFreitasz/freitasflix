@@ -1802,6 +1802,50 @@ body.fp-route .mainDrawerHandle {
     background: linear-gradient(90deg, #90cea1, #01b4e4);
 }
 
+.fp-rating__src--imdb {
+    margin: 0 u(6) 0 0;
+    padding: u(2) u(6);
+    border-radius: u(5);
+    color: #000;
+    background: #f5c518;
+    letter-spacing: 0;
+}
+
+.fp-rating__src--mal {
+    margin: 0 u(6) 0 0;
+    padding: u(2) u(6);
+    border-radius: u(5);
+    color: #fff;
+    background: #2e51a2;
+}
+
+/* Letterboxd's three dots */
+.fp-lb {
+    display: inline-flex;
+    align-items: center;
+    margin-right: u(6);
+}
+
+.fp-lb__dot {
+    width: u(10);
+    height: u(10);
+    border-radius: 50%;
+    margin-right: u(-2);
+}
+
+.fp-lb__dot--o {
+    background: #ff8000;
+}
+
+.fp-lb__dot--g {
+    background: #00e054;
+}
+
+.fp-lb__dot--b {
+    background: #40bcf4;
+    margin-right: 0;
+}
+
 .fp-rating__val {
     color: #fff;
     font-weight: 700;
@@ -1866,6 +1910,10 @@ body.fp-route .mainDrawerHandle {
     letter-spacing: 0.02em;
     color: #ececf1;
     white-space: nowrap;
+}
+
+.fp-tech__chip--mal {
+    border-color: #2e51a2;
 }
 
 .fp-tech__chip--small {
@@ -1935,10 +1983,23 @@ body.fp-route .mainDrawerHandle {
     margin-top: u(8);
 }
 
+.fp-settings__label {
+    flex: 1 1 100%;
+    margin: u(8) 0 u(6);
+    font-size: u(14);
+    font-weight: 700;
+    color: #fff;
+}
+
+.fp-settings__hint {
+    font-weight: 500;
+    color: var(--fp-ink-2);
+}
+
 .fp-settings__input {
-    flex: 1 1 u(260);
+    flex: 1 1 100%;
     height: u(52);
-    margin: 0 u(12) u(12) 0;
+    margin: 0 0 u(12);
     padding: 0 u(16);
     border-radius: u(12);
     border: 1px solid rgba(255, 255, 255, 0.2);

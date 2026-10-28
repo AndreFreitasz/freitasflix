@@ -1,71 +1,82 @@
 import React, { type FC, type FormEvent, useCallback, useState } from 'react';
 
 import FreitasPage from '../components/Layout';
-import { fetchOmdb, getOmdbKey, setOmdbKey } from '../ratings';
+import {
+    clearRatingsCache,
+    getMdblistKey,
+    getOmdbKey,
+    setMdblistKey,
+    setOmdbKey,
+    testKeys
+} from '../ratings';
 
 type Status = { kind: 'idle' } | { kind: 'testing' } | { kind: 'ok', text: string } | { kind: 'error', text: string };
 
-const TEST_IMDB_ID = 'tt0111161'; // Um Sonho de Liberdade
-
-/** One-time setup of the free OMDb key that powers the Metacritic score. */
+/** One-time setup of the free keys that bring IMDb, Rotten Tomatoes, Metacritic, Letterboxd and MyAnimeList. */
 const Notas: FC = () => {
-    const [ key, setKey ] = useState(getOmdbKey());
+    const [ mdblist, setMdblist ] = useState(getMdblistKey());
+    const [ omdb, setOmdb ] = useState(getOmdbKey());
     const [ status, setStatus ] = useState<Status>({ kind: 'idle' });
 
-    const onChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setKey(e.target.value), []);
+    const onMdblist = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setMdblist(e.target.value), []);
+    const onOmdb = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setOmdb(e.target.value), []);
 
     const onSubmit = useCallback(async (e: FormEvent) => {
         e.preventDefault();
-        const value = key.trim();
-        if (!value) {
-            setOmdbKey('');
-            setStatus({ kind: 'ok', text: 'Chave removida. A nota do Metacritic deixa de aparecer.' });
-            return;
-        }
+        const m = mdblist.trim();
+        const o = omdb.trim();
         setStatus({ kind: 'testing' });
         try {
-            localStorage.removeItem('fp-omdb:' + TEST_IMDB_ID);
-        } catch {
-            // ignore
-        }
-        try {
-            const r = await fetchOmdb(TEST_IMDB_ID, value);
-            setOmdbKey(value);
+            const lines = await testKeys(m, o);
+            setMdblistKey(m);
+            setOmdbKey(o);
+            clearRatingsCache();
             setStatus({
                 kind: 'ok',
-                text: r.metascore != null ?
-                    `Funcionou! Teste: Um Sonho de Liberdade tem Metacritic ${r.metascore}. A chave vale para todos os seus aparelhos.` :
-                    'Chave salva. A chave vale para todos os seus aparelhos.'
+                text: (lines.length ? lines.join(' ') + ' ' : 'Chaves removidas. ') + 'Vale para todos os seus aparelhos.'
             });
         } catch (err) {
-            setStatus({ kind: 'error', text: 'A chave não funcionou: ' + (err instanceof Error ? err.message : 'erro desconhecido') });
+            setStatus({ kind: 'error', text: 'Não funcionou: ' + (err instanceof Error ? err.message : 'erro desconhecido') });
         }
-    }, [ key ]);
+    }, [ mdblist, omdb ]);
 
     return (
         <FreitasPage id='freitasNotasPage' title='Notas'>
             <main className='fp-settings fp-pad'>
                 <h1 className='fp-settings__title'>Notas dos títulos</h1>
                 <p className='fp-settings__text'>
-                    A nota do TMDB vem do próprio Jellyfin. Para mostrar também o <strong>Metacritic</strong> (e o Rotten
-                    Tomatoes quando o Jellyfin não tiver), o Freitas+ usa o OMDb, que é gratuito e pede uma chave.
+                    O Freitas+ mostra as notas do <strong>IMDb</strong>, <strong>Rotten Tomatoes</strong>, <strong>Metacritic</strong>,{' '}
+                    <strong>Letterboxd</strong> e, nos animes, <strong>MyAnimeList</strong>. Elas vêm do MDBList, que é gratuito e pede uma chave.
                 </p>
                 <ol className='fp-settings__steps'>
-                    <li>Abra <a href='https://www.omdbapi.com/apikey.aspx' target='_blank' rel='noopener noreferrer'>omdbapi.com/apikey.aspx</a>, escolha <strong>FREE</strong> e informe seu e-mail.</li>
-                    <li>Clique no link de ativação que chega no e-mail.</li>
-                    <li>Cole a chave abaixo e salve. Basta fazer isso uma vez, em qualquer aparelho.</li>
+                    <li>Entre em <a href='https://mdblist.com' target='_blank' rel='noopener noreferrer'>mdblist.com</a> (dá para usar a conta do Trakt ou do Google).</li>
+                    <li>Abra <strong>Preferences</strong>, desça até <strong>API Access</strong> e gere a chave.</li>
+                    <li>Cole abaixo e salve. Basta fazer isso uma vez, em qualquer aparelho.</li>
                 </ol>
                 <form className='fp-settings__form' onSubmit={onSubmit}>
+                    <label className='fp-settings__label' htmlFor='fpMdblistKey'>Chave do MDBList</label>
                     <input
+                        id='fpMdblistKey'
                         className='fp-settings__input'
                         type='text'
-                        inputMode='text'
                         autoComplete='off'
                         spellCheck={false}
-                        placeholder='Chave do OMDb (ex.: a1b2c3d4)'
-                        value={key}
-                        onChange={onChange}
-                        aria-label='Chave do OMDb'
+                        placeholder='Cole aqui a chave do MDBList'
+                        value={mdblist}
+                        onChange={onMdblist}
+                    />
+                    <label className='fp-settings__label' htmlFor='fpOmdbKey'>
+                        Chave do OMDb <span className='fp-settings__hint'>(opcional, reserva para IMDb, Rotten Tomatoes e Metacritic)</span>
+                    </label>
+                    <input
+                        id='fpOmdbKey'
+                        className='fp-settings__input'
+                        type='text'
+                        autoComplete='off'
+                        spellCheck={false}
+                        placeholder='Chave do OMDb'
+                        value={omdb}
+                        onChange={onOmdb}
                     />
                     <button type='submit' className='fp-btn-play' disabled={status.kind === 'testing'}>
                         <span>{status.kind === 'testing' ? 'Testando…' : 'Salvar'}</span>

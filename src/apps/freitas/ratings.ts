@@ -7,104 +7,292 @@ import { useApi } from 'hooks/useApi';
 import { currentSettings as userSettings } from 'scripts/settings/userSettings';
 
 /*
- * Ratings shown by Freitas+:
- *  - TMDB:            item.CommunityRating (Jellyfin's default movie/series provider is TMDb)
- *  - Rotten Tomatoes: item.CriticRating when Jellyfin has it, otherwise OMDb
- *  - Metacritic:      OMDb "Metascore" (Jellyfin does not store it)
+ * Ratings shown by Freitas+ (title page and card details):
+ *   IMDb · Rotten Tomatoes · Metacritic · Letterboxd · MyAnimeList (animes) · TMDB
  *
- * OMDb needs a free API key. It is saved in the user's Jellyfin display preferences,
- * so typing it once (on any device) enables it on the TV, phone and desktop.
+ * Source: MDBList (one request returns every site). OMDb is an optional fallback
+ * that covers IMDb, Rotten Tomatoes and Metacritic. Jellyfin's own fields fill the
+ * gaps (CommunityRating = TMDb, CriticRating = Rotten Tomatoes).
+ *
+ * Keys are free and saved in the user's Jellyfin display preferences, so typing
+ * them once (on any device, at #/notas) enables them on the TV, phone and desktop.
+ * Results are cached per title for 14 days to stay far below the daily limits.
  */
 
+export const MDBLIST_KEY_SETTING = 'freitas-mdblist-key';
 export const OMDB_KEY_SETTING = 'freitas-omdb-key';
-const OMDB_CACHE_PREFIX = 'fp-omdb:';
-const OMDB_CACHE_DAYS = 14;
+const CACHE_PREFIX = 'fp-ratings:';
+const CACHE_DAYS = 14;
+const EMPTY_CACHE_DAYS = 2; // titles a site does not know yet are retried sooner
+const PAUSE_KEY = 'fp-ratings-paused-until';
 
-export function getOmdbKey(): string {
+function readSetting(name: string): string {
     try {
-        return (userSettings.get(OMDB_KEY_SETTING) || '').trim();
+        return (userSettings.get(name) || '').trim();
     } catch {
         return '';
     }
 }
 
-export function setOmdbKey(key: string) {
-    userSettings.set(OMDB_KEY_SETTING, key.trim(), true);
+export const getMdblistKey = () => readSetting(MDBLIST_KEY_SETTING);
+export const getOmdbKey = () => readSetting(OMDB_KEY_SETTING);
+export const setMdblistKey = (key: string) => userSettings.set(MDBLIST_KEY_SETTING, key.trim(), true);
+export const setOmdbKey = (key: string) => userSettings.set(OMDB_KEY_SETTING, key.trim(), true);
+
+export interface ExternalRatings {
+    imdb?: number // 0–10
+    rottenTomatoes?: number // %
+    metascore?: number // 0–100
+    letterboxd?: number // 0–5
+    mal?: number // 0–10
+    tmdb?: number // 0–10
 }
 
-export interface OmdbRatings {
-    metascore?: number
-    rottenTomatoes?: number
-    imdb?: number
-}
-
-function parseOmdb(json: Record<string, unknown>): OmdbRatings {
-    const out: OmdbRatings = {};
-    const meta = parseInt(String(json.Metascore), 10);
-    if (!isNaN(meta)) out.metascore = meta;
-    const imdb = parseFloat(String(json.imdbRating));
-    if (!isNaN(imdb)) out.imdb = imdb;
-    const list = Array.isArray(json.Ratings) ? json.Ratings as { Source?: string, Value?: string }[] : [];
-    const rt = list.find(r => r.Source === 'Rotten Tomatoes');
-    if (rt?.Value) {
-        const v = parseInt(rt.Value, 10);
-        if (!isNaN(v)) out.rottenTomatoes = v;
-    }
-    return out;
-}
-
-function readCache(imdbId: string): OmdbRatings | undefined {
-    try {
-        const raw = localStorage.getItem(OMDB_CACHE_PREFIX + imdbId);
-        if (!raw) return undefined;
-        const { t, v } = JSON.parse(raw) as { t: number, v: OmdbRatings };
-        if (Date.now() - t > OMDB_CACHE_DAYS * 86400000) return undefined;
-        return v;
-    } catch {
-        return undefined;
-    }
-}
-
-function writeCache(imdbId: string, v: OmdbRatings) {
-    try {
-        localStorage.setItem(OMDB_CACHE_PREFIX + imdbId, JSON.stringify({ t: Date.now(), v }));
-    } catch {
-        // storage full or blocked: just skip caching
-    }
-}
-
-export async function fetchOmdb(imdbId: string, key: string, signal?: AbortSignal): Promise<OmdbRatings> {
-    const cached = readCache(imdbId);
-    if (cached) return cached;
-    const res = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${encodeURIComponent(key)}`, { signal });
-    const json = await res.json() as Record<string, unknown>;
-    if (json.Response === 'False') {
-        if (String(json.Error || '').toLowerCase().includes('api key')) throw new Error(String(json.Error));
-        writeCache(imdbId, {});
-        return {};
-    }
-    const out = parseOmdb(json);
-    writeCache(imdbId, out);
-    return out;
-}
+/* ---------- ids ---------- */
 
 export function imdbIdOf(item?: BaseItemDto | null): string | undefined {
     const ids = item?.ProviderIds || {};
     return ids.Imdb || ids.IMDB || ids.imdb || undefined;
 }
 
-/** OMDb ratings for an item; disabled when there is no key or no IMDb id. */
-export function useOmdb(item?: BaseItemDto | null, enabled = true) {
-    const key = getOmdbKey();
-    const imdbId = imdbIdOf(item);
+export function tmdbIdOf(item?: BaseItemDto | null): string | undefined {
+    const ids = item?.ProviderIds || {};
+    return ids.Tmdb || ids.TMDB || ids.tmdb || undefined;
+}
+
+function cacheIdOf(item?: BaseItemDto | null): string | undefined {
+    const tmdb = tmdbIdOf(item);
+    if (tmdb) return `tmdb-${item?.Type}-${tmdb}`;
+    const imdb = imdbIdOf(item);
+    return imdb ? `imdb-${imdb}` : undefined;
+}
+
+/* ---------- cache ---------- */
+
+function readCache(id: string): ExternalRatings | undefined {
+    try {
+        const raw = localStorage.getItem(CACHE_PREFIX + id);
+        if (!raw) return undefined;
+        const { t, v, p } = JSON.parse(raw) as { t: number, v: ExternalRatings, p?: 1 };
+        const days = Object.keys(v).length && !p ? CACHE_DAYS : EMPTY_CACHE_DAYS;
+        if (Date.now() - t > days * 86400000) return undefined;
+        return v;
+    } catch {
+        return undefined;
+    }
+}
+
+/** `partial`: a configured source failed, so the entry is retried sooner. */
+function writeCache(id: string, v: ExternalRatings, partial = false) {
+    try {
+        localStorage.setItem(CACHE_PREFIX + id, JSON.stringify({ t: Date.now(), v, ...(partial ? { p: 1 } : {}) }));
+    } catch {
+        // storage full or blocked: just skip caching
+    }
+}
+
+function isPaused(): boolean {
+    try {
+        return Number(localStorage.getItem(PAUSE_KEY) || 0) > Date.now();
+    } catch {
+        return false;
+    }
+}
+
+function pauseForAnHour() {
+    try {
+        localStorage.setItem(PAUSE_KEY, String(Date.now() + 3600000));
+    } catch {
+        // ignore
+    }
+}
+
+/* ---------- MDBList ---------- */
+
+interface MdblistRating {
+    source?: string
+    value?: number | null
+    score?: number | null
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/** A rating on a 0–`max` scale, from MDBList's native value or its 0–100 score. */
+function scaled(r: MdblistRating, max: number): number | undefined {
+    if (typeof r.value === 'number' && r.value > 0) {
+        // some endpoints return Letterboxd on 0–10 instead of 0–5
+        return round1(r.value > max ? r.value / 2 : r.value);
+    }
+    if (typeof r.score === 'number' && r.score > 0) return round1(r.score * max / 100);
+    return undefined;
+}
+
+function percent(r: MdblistRating): number | undefined {
+    const v = typeof r.score === 'number' && r.score > 0 ? r.score : r.value;
+    return typeof v === 'number' && v > 0 ? Math.round(v) : undefined;
+}
+
+const MDBLIST_FIELDS: Record<string, (r: MdblistRating) => [keyof ExternalRatings, number | undefined]> = {
+    imdb: r => [ 'imdb', scaled(r, 10) ],
+    tomatoes: r => [ 'rottenTomatoes', percent(r) ],
+    metacritic: r => [ 'metascore', percent(r) ],
+    letterboxd: r => [ 'letterboxd', scaled(r, 5) ],
+    myanimelist: r => [ 'mal', scaled(r, 10) ],
+    tmdb: r => {
+        const p = percent(r);
+        return [ 'tmdb', p != null ? round1(p / 10) : undefined ];
+    }
+};
+
+export function parseMdblist(json: { ratings?: MdblistRating[] }): ExternalRatings {
+    const out: ExternalRatings = {};
+    for (const r of json.ratings || []) {
+        const field = r.source ? MDBLIST_FIELDS[r.source] : undefined;
+        if (!field) continue;
+        const [ key, value ] = field(r);
+        if (value != null) out[key] = value;
+    }
+    return out;
+}
+
+class RatingsKeyError extends Error {}
+
+export async function fetchMdblist(path: string, key: string, signal?: AbortSignal): Promise<ExternalRatings> {
+    const res = await fetch(`https://api.mdblist.com/${path}?apikey=${encodeURIComponent(key)}`, { signal });
+    if (res.status === 429) {
+        pauseForAnHour();
+        throw new Error('Limite diário do MDBList atingido');
+    }
+    if (res.status === 401 || res.status === 403) throw new RatingsKeyError('Chave do MDBList inválida');
+    if (res.status === 404) return {};
+    if (!res.ok) throw new Error(`MDBList respondeu ${res.status}`);
+    return parseMdblist(await res.json() as { ratings?: MdblistRating[] });
+}
+
+function mdblistPath(item: BaseItemDto): string | undefined {
+    const type = item.Type === 'Series' ? 'show' : 'movie';
+    const tmdb = tmdbIdOf(item);
+    if (tmdb) return `tmdb/${type}/${encodeURIComponent(tmdb)}`;
+    const imdb = imdbIdOf(item);
+    return imdb ? `imdb/${type}/${encodeURIComponent(imdb)}` : undefined;
+}
+
+/* ---------- OMDb (fallback) ---------- */
+
+function parseOmdb(json: Record<string, unknown>): ExternalRatings {
+    const out: ExternalRatings = {};
+    const meta = parseInt(String(json.Metascore), 10);
+    if (!isNaN(meta)) out.metascore = meta;
+    const imdb = parseFloat(String(json.imdbRating));
+    if (!isNaN(imdb)) out.imdb = imdb;
+    const list = Array.isArray(json.Ratings) ? json.Ratings as { Source?: string, Value?: string }[] : [];
+    const rt = parseInt(list.find(r => r.Source === 'Rotten Tomatoes')?.Value || '', 10);
+    if (!isNaN(rt)) out.rottenTomatoes = rt;
+    return out;
+}
+
+export async function fetchOmdb(imdbId: string, key: string, signal?: AbortSignal): Promise<ExternalRatings> {
+    const res = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${encodeURIComponent(key)}`, { signal });
+    const json = await res.json() as Record<string, unknown>;
+    if (json.Response !== 'False') return parseOmdb(json);
+    if (String(json.Error || '').toLowerCase().includes('api key')) throw new RatingsKeyError(String(json.Error));
+    return {};
+}
+
+/* ---------- combined ---------- */
+
+/** Runs one source; undefined when it is not configured or failed (the other source may still answer). */
+async function trySource(
+    name: string,
+    run: (() => Promise<ExternalRatings>) | undefined,
+    signal?: AbortSignal
+): Promise<ExternalRatings | undefined> {
+    if (!run) return undefined;
+    try {
+        return await run();
+    } catch (err) {
+        if (signal?.aborted) throw err;
+        console.warn(`[Freitas+] ${name}`, err);
+        return undefined;
+    }
+}
+
+const needsOmdb = (r?: ExternalRatings) => !r || r.metascore == null || r.imdb == null || r.rottenTomatoes == null;
+
+async function fetchExternal(item: BaseItemDto, signal?: AbortSignal): Promise<ExternalRatings> {
+    const id = cacheIdOf(item)!;
+    const cached = readCache(id);
+    if (cached) return cached;
+    if (isPaused()) return {};
+
+    const mdbKey = getMdblistKey();
+    const path = mdblistPath(item);
+    const mdb = await trySource('MDBList', mdbKey && path ? () => fetchMdblist(path, mdbKey, signal) : undefined, signal);
+
+    // OMDb fills what MDBList could not give (or everything, if MDBList is off/unreachable)
+    const omdbKey = getOmdbKey();
+    const imdb = imdbIdOf(item);
+    const omdbRun = omdbKey && imdb && needsOmdb(mdb) ? () => fetchOmdb(imdb, omdbKey, signal) : undefined;
+    const omdb = await trySource('OMDb', omdbRun, signal);
+
+    if (!mdb && !omdb) return {};
+    const out = { ...omdb, ...mdb };
+    writeCache(id, out, !!(mdbKey && path) && !mdb);
+    return out;
+}
+
+/** External ratings for a movie/series; idle when no key is configured. */
+export function useExternalRatings(item?: BaseItemDto | null, enabled = true) {
+    const id = cacheIdOf(item);
+    const hasKey = !!(getMdblistKey() || getOmdbKey());
     return useQuery({
-        queryKey: [ 'freitas', 'omdb', imdbId ],
-        queryFn: ({ signal }) => fetchOmdb(imdbId!, key, signal),
-        enabled: enabled && !!key && !!imdbId,
+        queryKey: [ 'freitas', 'ratings', id ],
+        queryFn: ({ signal }) => fetchExternal(item!, signal),
+        enabled: enabled && hasKey && !!id && (item?.Type === 'Movie' || item?.Type === 'Series'),
         staleTime: Infinity,
         gcTime: 60 * 60 * 1000,
         retry: false
     });
+}
+
+async function testMdblist(key: string): Promise<string> {
+    try {
+        const r = await fetchMdblist('tmdb/movie/278', key);
+        const parts = [
+            r.imdb != null && `IMDb ${r.imdb}`,
+            r.metascore != null && `Metacritic ${r.metascore}`,
+            r.letterboxd != null && `Letterboxd ${r.letterboxd}`
+        ].filter(Boolean);
+        const sample = parts.length ? ` (Um Sonho de Liberdade: ${parts.join(', ')})` : '';
+        return `MDBList funcionando${sample}.`;
+    } catch (err) {
+        if (err instanceof RatingsKeyError) throw err;
+        const reason = err instanceof Error ? err.message : 'erro';
+        return `MDBList: não deu para testar daqui (${reason}). A chave foi salva mesmo assim.`;
+    }
+}
+
+async function testOmdb(key: string): Promise<string> {
+    const r = await fetchOmdb('tt0111161', key);
+    return 'OMDb funcionando' + (r.metascore != null ? ` (Metacritic ${r.metascore})` : '') + '.';
+}
+
+/** Checks the keys against a well-known title; used by the settings page. */
+export async function testKeys(mdblistKey: string, omdbKey: string): Promise<string[]> {
+    const lines: string[] = [];
+    if (mdblistKey) lines.push(await testMdblist(mdblistKey));
+    if (omdbKey) lines.push(await testOmdb(omdbKey));
+    return lines;
+}
+
+/** Clears cached ratings, e.g. after keys change. */
+export function clearRatingsCache() {
+    try {
+        const keys = Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX) || k.startsWith('fp-omdb:') || k === PAUSE_KEY);
+        for (const k of keys) localStorage.removeItem(k);
+    } catch {
+        // ignore
+    }
 }
 
 /** Full item (media streams, provider ids, critic rating), fetched on demand for card details. */
@@ -122,17 +310,12 @@ export function useItemDetails(itemId?: string | null, enabled = true) {
     });
 }
 
-export interface Ratings {
-    tmdb?: number
-    rottenTomatoes?: number
-    metascore?: number
-}
-
-export function combineRatings(item?: BaseItemDto | null, omdb?: OmdbRatings): Ratings {
+/** External ratings completed with Jellyfin's own fields. */
+export function combineRatings(item?: BaseItemDto | null, ext?: ExternalRatings): ExternalRatings {
     return {
-        tmdb: item?.CommunityRating || undefined,
-        rottenTomatoes: item?.CriticRating ?? omdb?.rottenTomatoes,
-        metascore: omdb?.metascore
+        ...ext,
+        tmdb: ext?.tmdb ?? (item?.CommunityRating || undefined),
+        rottenTomatoes: ext?.rottenTomatoes ?? (item?.CriticRating ?? undefined)
     };
 }
 
