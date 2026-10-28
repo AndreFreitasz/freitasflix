@@ -20,6 +20,8 @@ const importRoute = (page: string, type: AppType) => {
             return import(/* webpackChunkName: "[request]" */ `../../apps/dashboard/routes/${page}`);
         case AppType.Modern:
             return import(/* webpackChunkName: "[request]" */ `../../apps/modern/routes/${page}`);
+        case AppType.Freitas:
+            return import(/* webpackChunkName: "[request]" */ `../../apps/freitas/routes/${page}`);
         case AppType.Legacy:
             return import(/* webpackChunkName: "[request]" */ `../../apps/legacy/routes/${page}`);
     }

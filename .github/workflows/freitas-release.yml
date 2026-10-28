@@ -1,0 +1,49 @@
+name: Freitas+ build 📦
+
+on:
+  push:
+    branches:
+      - freitas
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: freitas-release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit
+
+      - name: Build
+        run: npm run build:production
+
+      - name: Package
+        run: tar -czf freitas-web.tar.gz -C dist .
+
+      - name: Publish release "freitas-latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete freitas-latest --yes --cleanup-tag || true
+          gh release create freitas-latest freitas-web.tar.gz \
+            --target "${{ github.sha }}" \
+            --title "Freitas+ (último build)" \
+            --notes "Build automático do commit ${{ github.sha }}. Extraia em /DATA/AppData/jellyfin/freitas-web e reinicie o Jellyfin." \
+            --prerelease

@@ -3,6 +3,8 @@
  * Used in route definitions to determine where to load relevant components from.
  */
 export enum AppType {
+    /** The Freitas+ app (custom home and title pages). */
+    Freitas = 'freitas',
     /** The admin dashboard app. */
     Dashboard = 'dashboard',
     /** The legacy app. */

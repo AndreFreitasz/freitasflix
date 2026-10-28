@@ -258,6 +258,7 @@ function nav(activeElement, direction, container, focusableElements) {
     const sourceMidY = rect.top + (rect.height / 2);
 
     const focusable = focusableElements || container.querySelectorAll(focusableQuery);
+    const sourceIsLowPriority = !!activeElement.closest('.focus-lowpriority');
 
     const maxDistance = Infinity;
     let minDistance = maxDistance;
@@ -278,6 +279,11 @@ function nav(activeElement, direction, container, focusableElements) {
 
         // not currently visible
         if (!elementRect.width && !elementRect.height) {
+            continue;
+        }
+
+        // hidden but still laid out (e.g. closed menus that stay mounted)
+        if (curr.closest('[aria-hidden="true"]') || getComputedStyle(curr).visibility === 'hidden') {
             continue;
         }
 
@@ -361,7 +367,12 @@ function nav(activeElement, direction, container, focusableElements) {
                 break;
         }
 
-        const dist = Math.sqrt(distX * distX + distY * distY);
+        let dist = Math.sqrt(distX * distX + distY * distY);
+
+        // Floating bars (e.g. a fixed header) are only reached when nothing else is in that direction
+        if (!sourceIsLowPriority && curr.closest('.focus-lowpriority')) {
+            dist += 100000;
+        }
 
         if (dist < minDistance) {
             nearestElement = curr;

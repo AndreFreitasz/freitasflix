@@ -485,6 +485,11 @@ class AppRouter {
 
         const contextSuffix = context ? '&context=' + context : '';
 
+        // Freitas+: movies and series open the redesigned title page
+        if (itemType == 'Movie' || itemType == 'Series') {
+            return '#/titulo?id=' + id + '&serverId=' + serverId;
+        }
+
         if (itemType == 'Series' || itemType == 'Season' || itemType == 'Episode') {
             return '#/details?id=' + id + contextSuffix + '&serverId=' + serverId;
         }

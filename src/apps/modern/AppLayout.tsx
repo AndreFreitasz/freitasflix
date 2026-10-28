@@ -10,7 +10,9 @@ import OffsetAppBar from 'components/OffsetAppBar';
 import ThemeCss from 'components/ThemeCss';
 import { useApi } from 'hooks/useApi';
 
-import AppToolbar from './components/AppToolbar';
+import FreitasHeader from 'apps/freitas/components/Header';
+import 'apps/freitas/freitas.scss';
+
 import AppDrawer, { isDrawerPath } from './components/drawers/AppDrawer';
 import LibraryToolbar from './features/libraries/components/LibraryToolbar';
 import { LibraryProvider } from './features/libraries/hooks/useLibrary';
@@ -26,6 +28,9 @@ export const Component = () => {
     const isMediumScreen = useMediaQuery((t: Theme) => t.breakpoints.up('md'));
     const isDrawerAvailable = isDrawerPath(location.pathname) && Boolean(user) && !isMediumScreen;
     const isDrawerOpen = isDrawerActive && isDrawerAvailable;
+    // Freitas+ pages draw their own floating header; the video player has none
+    const isFreitasPage = location.pathname === '/home' || location.pathname === '/titulo';
+    const isVideoPage = location.pathname === '/video';
 
     const onToggleDrawer = useCallback(() => {
         setIsDrawerActive(!isDrawerActive);
@@ -42,14 +47,12 @@ export const Component = () => {
                 }}
             >
                 <StrictMode>
-                    <OffsetAppBar dense>
-                        <AppToolbar
-                            isDrawerAvailable={!isMediumScreen && isDrawerAvailable}
-                            isDrawerOpen={isDrawerOpen}
-                            onDrawerButtonClick={onToggleDrawer}
-                        />
-                        {isLibraryPath(location.pathname) && <LibraryToolbar />}
-                    </OffsetAppBar>
+                    {!isFreitasPage && !isVideoPage && (
+                        <OffsetAppBar dense className='fp-appbar'>
+                            <FreitasHeader inline />
+                            {isLibraryPath(location.pathname) && <LibraryToolbar />}
+                        </OffsetAppBar>
+                    )}
 
                     {
                         isDrawerAvailable && (
