@@ -2,14 +2,17 @@ import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models/base
 import { ImageType } from '@jellyfin/sdk/lib/generated-client/models/image-type';
 import React, { type FC, useCallback, useEffect, useRef, useState } from 'react';
 
+import layoutManager from 'components/layoutManager';
 import { useApi } from 'hooks/useApi';
 
 import { useMyList, useToggleMyList } from '../api';
 import { playItem } from '../playback';
 import {
+    backdropWidth,
     formatOfficialRating,
     formatRating,
     imageUrl,
+    isKeyboardFocus,
     itemHue,
     lengthLabel
 } from '../utils';
@@ -73,17 +76,19 @@ export const MetaLine: FC<{ item: BaseItemDto, showScore?: boolean, maxGenres?: 
     );
 };
 
-const ROTATE_MS = 9000;
+const ROTATE_MS = 8000;
+const SWIPE_MIN = 45;
 
 interface HeroDotProps {
     index: number
     count: number
     name: string
     active: boolean
+    paused: boolean
     onPick: (i: number) => void
 }
 
-const HeroDot: FC<HeroDotProps> = ({ index, count, name, active, onPick }) => {
+const HeroDot: FC<HeroDotProps> = ({ index, count, name, active, paused, onPick }) => {
     const onClick = useCallback(() => onPick(index), [ index, onPick ]);
     return (
         <button
@@ -93,37 +98,131 @@ const HeroDot: FC<HeroDotProps> = ({ index, count, name, active, onPick }) => {
             aria-pressed={active}
             onClick={onClick}
         >
-            <span className={'fp-dot__bar' + (active ? ' is-active' : '')} />
+            <span className={'fp-dot__bar' + (active ? ' is-active' : '')}>
+                {active && (
+                    <span
+                        className={'fp-dot__fill' + (paused ? ' is-paused' : '')}
+                        style={{ animationDuration: `${ROTATE_MS}ms` }}
+                    />
+                )}
+            </span>
         </button>
     );
 };
 
-const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
-    const { api } = useApi();
-    const [ index, setIndex ] = useState(0);
-    const paused = useRef(false);
-    const { data: myList } = useMyList();
-    const toggleList = useToggleMyList();
+function canHover() {
+    try {
+        return window.matchMedia('(hover: hover)').matches;
+    } catch {
+        return true;
+    }
+}
 
-    const count = items.length;
-    const item = items[Math.min(index, count - 1)];
+type PauseReason = 'hover' | 'focus' | 'offscreen' | 'hidden' | 'touch';
+
+/**
+ * Auto-advancing slides. The timer keeps its remaining time across pauses so
+ * the progress bar on the active dot and the slide change stay in sync.
+ */
+function useRotation(count: number) {
+    const [ index, setIndex ] = useState(0);
+    const [ reasons, setReasons ] = useState<Partial<Record<PauseReason, boolean>>>({});
+    const remaining = useRef(ROTATE_MS);
+    const paused = Object.values(reasons).some(Boolean);
+
+    const setPaused = useCallback((reason: PauseReason, on: boolean) => {
+        setReasons(r => (!!r[reason] === on ? r : { ...r, [reason]: on }));
+    }, []);
 
     useEffect(() => {
+        remaining.current = ROTATE_MS;
+    }, [ index ]);
+
+    useEffect(() => {
+        if (count < 2 || paused) return;
+        const started = Date.now();
+        const t = window.setTimeout(() => setIndex(i => (i + 1) % count), remaining.current);
+        return () => {
+            window.clearTimeout(t);
+            remaining.current = Math.max(0, remaining.current - (Date.now() - started));
+        };
+    }, [ index, paused, count ]);
+
+    useEffect(() => {
+        // guarded: old TV browsers without the Page Visibility API just never pause
+        // eslint-disable-next-line compat/compat
+        const onVisibility = () => setPaused('hidden', !!document.hidden);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, [ setPaused ]);
+
+    const go = useCallback((delta: number) => {
         if (count < 2) return;
-        const t = window.setInterval(() => {
-            if (!paused.current && document.visibilityState === 'visible') {
-                setIndex(i => (i + 1) % count);
-            }
-        }, ROTATE_MS);
-        return () => window.clearInterval(t);
+        setIndex(i => (i + delta + count) % count);
     }, [ count ]);
 
-    const onFocusIn = useCallback(() => {
-        paused.current = true;
-    }, []);
-    const onFocusOut = useCallback(() => {
-        paused.current = false;
-    }, []);
+    return { index: Math.min(index, Math.max(0, count - 1)), setIndex, paused, setPaused, go };
+}
+
+const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
+    const { api } = useApi();
+    const { data: myList } = useMyList();
+    const toggleList = useToggleMyList();
+    const sectionRef = useRef<HTMLElement>(null);
+    const touch = useRef<{ x: number, y: number } | null>(null);
+
+    const count = items.length;
+    const { index, setIndex, paused, setPaused, go } = useRotation(count);
+    const item = items[index];
+    const width = backdropWidth();
+
+    // Only rotate while the hero is actually on screen
+    useEffect(() => {
+        const el = sectionRef.current;
+        if (!el || typeof IntersectionObserver === 'undefined') return;
+        const io = new IntersectionObserver(
+            ([ entry ]) => setPaused('offscreen', entry.intersectionRatio < 0.35),
+            { threshold: [ 0, 0.35, 1 ] }
+        );
+        io.observe(el);
+        return () => io.disconnect();
+    }, [ setPaused, item ]);
+
+    // Warm up the next backdrop so the change is instant
+    useEffect(() => {
+        if (count < 2) return;
+        const next = imageUrl(api, items[(index + 1) % count], ImageType.Backdrop, width, 2400);
+        if (next) new Image().src = next;
+    }, [ api, items, index, count, width ]);
+
+    // Mouse hover pauses; a finger tap must not (iOS never sends the matching "leave")
+    const onPointerEnter = useCallback((e: React.PointerEvent) => {
+        if (e.pointerType === 'mouse' && canHover()) setPaused('hover', true);
+    }, [ setPaused ]);
+    const onPointerLeave = useCallback(() => setPaused('hover', false), [ setPaused ]);
+    const onFocus = useCallback((e: React.FocusEvent) => {
+        if (isKeyboardFocus(e.target, layoutManager.tv)) setPaused('focus', true);
+    }, [ setPaused ]);
+    const onBlur = useCallback((e: React.FocusEvent) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPaused('focus', false);
+    }, [ setPaused ]);
+
+    const onTouchStart = useCallback((e: React.TouchEvent) => {
+        const t = e.touches[0];
+        touch.current = { x: t.clientX, y: t.clientY };
+        setPaused('touch', true);
+    }, [ setPaused ]);
+    const onTouchEnd = useCallback((e: React.TouchEvent) => {
+        const start = touch.current;
+        touch.current = null;
+        setPaused('touch', false);
+        const t = e.changedTouches[0];
+        if (!start || !t) return;
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        if (Math.abs(dx) > SWIPE_MIN && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
+    }, [ go, setPaused ]);
+
     const onPlay = useCallback(() => {
         if (item) playItem(item);
     }, [ item ]);
@@ -134,17 +233,22 @@ const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
 
     if (!item) return <section className='fp-hero fp-hero--empty' aria-hidden='true' />;
 
-    const backdrop = imageUrl(api, item, ImageType.Backdrop, 1920);
+    const backdrop = imageUrl(api, item, ImageType.Backdrop, width, 2400);
     const h = itemHue(item);
 
     return (
         <section
-            className='fp-hero'
+            ref={sectionRef}
+            className='fp-hero fp-hero--home'
             aria-label='Destaques'
-            onFocus={onFocusIn}
-            onBlur={onFocusOut}
-            onMouseEnter={onFocusIn}
-            onMouseLeave={onFocusOut}
+            aria-roledescription='carrossel'
+            onFocus={onFocus}
+            onBlur={onBlur}
+            onPointerEnter={onPointerEnter}
+            onPointerLeave={onPointerLeave}
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+            onTouchCancel={onTouchEnd}
         >
             <div
                 className='fp-hero__bg'
@@ -190,6 +294,7 @@ const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
                             count={count}
                             name={it.Name || ''}
                             active={i === index}
+                            paused={paused}
                             onPick={setIndex}
                         />
                     ))}

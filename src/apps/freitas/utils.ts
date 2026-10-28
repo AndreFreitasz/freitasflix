@@ -42,10 +42,11 @@ export function imageUrl(
     api: Api | undefined,
     item: BaseItemDto | undefined,
     type: ImageType,
-    width: number
+    width: number,
+    maxFill = 4096
 ): string | undefined {
     if (!api || !item?.Id) return undefined;
-    const fillWidth = Math.ceil(width * Math.min(window.devicePixelRatio || 1, 2));
+    const fillWidth = Math.min(maxFill, Math.ceil(width * Math.min(window.devicePixelRatio || 1, 2)));
     const make: MakeUrl = (id, imgType, tag) => getImageApi(api).getItemImageUrlById(id, imgType, {
         fillWidth,
         quality: 90,
@@ -57,6 +58,26 @@ export function imageUrl(
         case ImageType.Logo: return logoUrl(item, make);
         case ImageType.Thumb: return thumbUrl(item, make);
         default: return primaryUrl(item, make);
+    }
+}
+
+/**
+ * Width (css px) a full-bleed backdrop needs on this screen. On phones the
+ * 16:9 image is cropped to a tall hero, so it is sized from the hero height.
+ */
+export function backdropWidth(heroHeight = 620): number {
+    const w = window.innerWidth || 1280;
+    const needed = w <= 1000 ? Math.max(w, Math.round(heroHeight * 16 / 9)) : w;
+    return Math.min(1920, needed);
+}
+
+/** True when the user drives the UI with a remote or keyboard (show focus, pause on focus). */
+export function isKeyboardFocus(el: Element, tv: boolean): boolean {
+    if (tv) return true;
+    try {
+        return el.matches(':focus-visible');
+    } catch {
+        return false;
     }
 }
 

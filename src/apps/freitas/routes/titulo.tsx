@@ -28,6 +28,7 @@ import FreitasPage from '../components/Layout';
 import { playItem, playTrailer } from '../playback';
 import {
     audioSubtitleLabel,
+    backdropWidth,
     episodeCode,
     formatRuntime,
     imageUrl,
@@ -292,7 +293,7 @@ function getCreators(item: BaseItemDto) {
 
 const TitleHero: FC<{ item: BaseItemDto, playTarget: BaseItemDto, playLabel: string }> = ({ item, playTarget, playLabel }) => {
     const { api } = useApi();
-    const backdrop = imageUrl(api, item, ImageType.Backdrop, 1920);
+    const backdrop = imageUrl(api, item, ImageType.Backdrop, backdropWidth(720), 2400);
     const h = itemHue(item);
     const kind = kindLabel(item);
 
