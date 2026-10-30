@@ -81,7 +81,9 @@ export async function bridgeFetch<T>(api: Api, path: string, init: RequestInit =
         // empty / not json
     }
     if (!res.ok) {
-        const msg = (body as { error?: string } | null)?.error || `Erro ${res.status}`;
+        let msg = (body as { error?: string } | null)?.error || `Erro ${res.status}`;
+        // an older bridge does not know newer endpoints
+        if (res.status === 404 && msg === 'não encontrado') msg = 'A ponte do Freitas+ está desatualizada: atualize o freitas-bridge no servidor (sudo sh freitas-update.sh).';
         throw new BridgeError(res.status, msg);
     }
     return body as T;
