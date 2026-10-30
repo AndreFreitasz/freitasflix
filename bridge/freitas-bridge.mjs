@@ -127,6 +127,9 @@ async function authenticate(req) {
         me = await fetchJson(`${config.jellyfin}/Users/Me`, { headers: jellyfinAuth(token) }, 10000);
     } catch (err) {
         if (err.status === 401 || err.status === 403) throw new HttpError(401, 'Sessão do Jellyfin inválida.');
+        // Jellyfin answers 503 to addresses it considers remote when remote access is off;
+        // a container on Docker's bridge network looks remote (172.x)
+        if (err.status === 503) throw new HttpError(502, 'O Jellyfin recusou a ponte como acesso remoto (503). Coloque o freitas-bridge na rede "host" do CasaOS.');
         throw new HttpError(502, 'Não consegui falar com o Jellyfin: ' + err.message);
     }
     const user = {

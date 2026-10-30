@@ -9,8 +9,9 @@ services:
     container_name: freitas-bridge
     restart: unless-stopped
     command: ["node", "/app/freitas-bridge.mjs"]
-    ports:
-      - "8099:8099"
+    # rede do servidor: o Jellyfin vê a ponte como acesso local (na rede "bridge" do Docker
+    # ela aparece como 172.x e é recusada quando o acesso remoto está desligado)
+    network_mode: host
     volumes:
       - /DATA/AppData/freitas-bridge:/app
     environment:
