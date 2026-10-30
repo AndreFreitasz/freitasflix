@@ -86,6 +86,8 @@ async function fetchJson(url, init = {}, timeoutMs = 20000) {
             const msg = (body && (body.message || body.status_message || (Array.isArray(body) && body[0]?.errorMessage))) || `${res.status}`;
             throw new HttpError(res.status, String(msg));
         }
+        // a block page or proxy answering with HTML instead of the API
+        if (typeof body === 'string' && /^\s*</.test(body)) throw new HttpError(502, `resposta inesperada (HTML) de ${new URL(url).host}`);
         return body;
     } catch (err) {
         if (err.name === 'AbortError') throw new HttpError(504, 'tempo esgotado');
