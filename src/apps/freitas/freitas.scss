@@ -2499,6 +2499,243 @@ body.fp-route .mainDrawerHandle {
     }
 }
 
+.fp-badge--part {
+    background: rgba(180, 83, 9, 0.92);
+}
+
+.fp-badge--cine {
+    background: rgba(190, 18, 60, 0.9);
+}
+
+.fp-badge--soon {
+    background: rgba(30, 64, 175, 0.9);
+}
+
+.fp-tag--ep {
+    background: rgba(139, 92, 246, 0.28);
+    color: #ddd6fe;
+}
+
+.fp-tag--have {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fp-muted);
+}
+
+.fp-availnote {
+    max-width: u(600);
+    margin-top: u(10) !important;
+    font-size: u(15);
+    color: var(--fp-ink-2);
+}
+
+.fp-availnote--warn {
+    color: #fcd34d;
+}
+
+.fp-btn-play--alt {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.fp-btn-round:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.fp-btn-round--count {
+    position: relative;
+}
+
+.fp-btn-round__count {
+    position: absolute;
+    top: u(-4);
+    right: u(-4);
+    min-width: u(20);
+    height: u(20);
+    padding: 0 u(5);
+    border-radius: 999px;
+    background: #d97706;
+    color: #fff;
+    font-size: u(11);
+    font-weight: 800;
+    line-height: u(20);
+    text-align: center;
+}
+
+.fp-cseasons {
+    margin-bottom: u(24);
+}
+
+.fp-cseasons__title {
+    margin-bottom: u(12);
+    font-size: u(22);
+    font-weight: 800;
+}
+
+.fp-cseasons__list {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.fp-cseason {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: u(120);
+    margin: 0 u(10) u(10) 0;
+    padding: u(10) u(14);
+    border-radius: u(12);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus {
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    &[aria-pressed="true"] {
+        border-color: #fff;
+        background: rgba(255, 255, 255, 0.16);
+    }
+}
+
+.fp-cseason__n {
+    font-size: u(16);
+    font-weight: 800;
+}
+
+.fp-cseason__sub {
+    margin-top: u(2);
+    font-size: u(12);
+    color: var(--fp-muted);
+
+    .is-gap & {
+        color: #fcd34d;
+    }
+}
+
+.fp-cseasons__missing {
+    margin-top: u(4);
+    font-size: u(13);
+    color: var(--fp-muted);
+}
+
+.fp-search {
+    display: flex;
+    align-items: center;
+    max-width: u(760);
+    margin-bottom: u(20);
+}
+
+.fp-search__box {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: u(52);
+    margin-right: u(10);
+    padding: 0 u(16);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--fp-muted);
+
+    &:focus-within {
+        border-color: var(--fp-purple);
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    svg {
+        flex: none;
+        width: u(20);
+        height: u(20);
+        margin-right: u(10);
+    }
+
+    input {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: #fff;
+        font: inherit;
+        font-size: u(16);
+    }
+
+    input::-webkit-search-cancel-button {
+        display: none;
+    }
+}
+
+.fp-search .fp-btn-ghost {
+    flex: none;
+}
+
+@media (max-width: 600px) {
+    .fp-search .fp-btn-ghost {
+        width: u(44);
+        height: u(44);
+        justify-content: center;
+        padding: 0;
+
+        span {
+            display: none;
+        }
+
+        svg {
+            margin-right: 0;
+        }
+    }
+}
+
+/* the rounded box already shows focus (also on TV, where :focus gets a global outline) */
+.fp-root .fp-search__box input:focus {
+    outline: none !important;
+}
+
+.fp-searchstate {
+    display: flex;
+    align-items: center;
+    padding-top: u(12);
+    color: var(--fp-muted);
+}
+
+.fp-searchres {
+    padding-bottom: u(40);
+    transition: opacity 0.2s;
+
+    &.is-stale {
+        opacity: 0.6;
+    }
+}
+
+.fp-searchres__count {
+    margin-bottom: u(14);
+    font-size: u(14);
+    color: var(--fp-muted);
+
+    a {
+        margin-left: u(6);
+        color: #c4b5fd;
+        text-decoration: underline;
+    }
+}
+
+.fp-catgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(#{u(150)}, 1fr));
+    grid-gap: u(18) u(14);
+
+    .fp-card--poster {
+        width: auto;
+    }
+}
+
 /* ---------- TV performance mode ----------
  * TV chips (Tizen, webOS, Fire TV) have weak GPUs: live blur, masks, filters and
  * large soft shadows are re-rendered on every focus move and scroll step, which is
@@ -2594,5 +2831,10 @@ html.layout-tv {
 
     .fp-spinner {
         animation-duration: 1.4s;
+    }
+
+    .fp-cseason,
+    .fp-searchres {
+        transition: none;
     }
 }

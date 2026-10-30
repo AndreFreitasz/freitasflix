@@ -90,7 +90,8 @@ export async function bridgeFetch<T>(api: Api, path: string, init: RequestInit =
 /* ---------- types (mirror the bridge responses) ---------- */
 
 export type MediaKind = 'movie' | 'tv';
-export type CatalogState = 'library' | 'downloading' | 'none';
+export type CatalogState = 'library' | 'partial' | 'downloading' | 'none';
+export type Availability = 'digital' | 'cinema' | 'upcoming';
 
 export interface CatalogItem {
     type: MediaKind
@@ -103,9 +104,29 @@ export interface CatalogItem {
     overview: string
     rating?: number
     originalLanguage: string
+    date?: string
     state: CatalogState
     jellyfinId?: string
     progress?: number
+    /** movies not on disk: whether trackers can have it yet */
+    availability?: Availability
+    availableDate?: string
+    /** series: aired episodes, how many are on disk, how many are missing */
+    aired?: number
+    have?: number
+    missing?: number
+    ongoing?: boolean
+}
+
+export interface SeasonProgress {
+    number: number
+    name: string
+    episodes: number
+    aired: number
+    have: number
+    owned: number
+    missingEpisodes: number[]
+    year?: number
 }
 
 export interface CatalogSection {
@@ -120,10 +141,19 @@ export interface StateInfo {
     progress?: number
     status?: string
     timeleft?: string
-    title?: string
+    downloadTitle?: string
+    availability?: Availability
+    availableDate?: string
+    aired?: number
+    have?: number
+    missing?: number
+    ongoing?: boolean
+    seasons?: SeasonProgress[]
+    nextEpisode?: { season: number, episode: number, date: string }
+    following?: boolean
 }
 
-export interface CatalogTitle extends CatalogItem, Omit<StateInfo, 'title'> {
+export interface CatalogTitle extends CatalogItem, StateInfo {
     imdbId: string
     tvdbId?: number
     runtime?: number
@@ -134,14 +164,13 @@ export interface CatalogTitle extends CatalogItem, Omit<StateInfo, 'title'> {
     cast: { name: string, character: string, photo: string }[]
     directors: string[]
     studios: string[]
-    seasons?: { number: number, name: string, episodes: number, year?: number }[]
     trailer: string
     status: string
 }
 
 export interface Release {
     key: string
-    origin: 'radarr' | 'prowlarr'
+    origin: 'radarr' | 'sonarr' | 'prowlarr'
     indexer: string
     title: string
     size: number
@@ -159,10 +188,16 @@ export interface Release {
     rejections: string[]
     infoUrl: string
     score: number
+    /** series */
+    seasonNumber?: number
+    episodes?: number[]
+    fullSeason?: boolean
 }
 
 export interface ReleasesResponse {
-    movieId: number
+    movieId?: number
+    seriesId?: number
+    season?: number
     releases: Release[]
     errors: string[]
 }
@@ -221,19 +256,20 @@ export function useCatalogState(type?: MediaKind, tmdbId?: number, initial?: Sta
 }
 
 /** Download options from the user's trackers; started on demand (it can take a minute). */
-export function useReleases(tmdbId: number | undefined, enabled: boolean) {
+export function useReleases(type: MediaKind, tmdbId: number | undefined, season: number | undefined, enabled: boolean) {
     const { api, userId, enabled: ready } = useBridgeCtx();
+    const path = type === 'tv' ? `/api/releases/tv/${tmdbId}?season=${season}` : `/api/releases/movie/${tmdbId}`;
     return useQuery({
-        queryKey: [ 'freitas', 'bridge', userId, 'releases', tmdbId ],
-        queryFn: ({ signal }) => bridgeFetch<ReleasesResponse>(api!, `/api/releases/movie/${tmdbId}`, {}, signal),
-        enabled: ready && enabled && !!tmdbId,
+        queryKey: [ 'freitas', 'bridge', userId, 'releases', type, tmdbId, type === 'tv' ? season : 0 ],
+        queryFn: ({ signal }) => bridgeFetch<ReleasesResponse>(api!, path, {}, signal),
+        enabled: ready && enabled && !!tmdbId && (type === 'movie' || season != null),
         retry: false,
         staleTime: 10 * 60 * 1000,
         gcTime: 30 * 60 * 1000
     });
 }
 
-export function useGrab(tmdbId?: number) {
+export function useGrab(type: MediaKind, tmdbId?: number) {
     const { api, userId } = useBridgeCtx();
     const qc = useQueryClient();
     return useMutation({
@@ -244,8 +280,37 @@ export function useGrab(tmdbId?: number) {
         onSuccess: () => {
             void qc.invalidateQueries({ queryKey: [ 'freitas', 'bridge', userId, 'state' ] });
             void qc.invalidateQueries({ queryKey: [ 'freitas', 'bridge', userId, 'discover' ] });
-            qc.removeQueries({ queryKey: [ 'freitas', 'bridge', userId, 'releases', tmdbId ] });
+            qc.removeQueries({ queryKey: [ 'freitas', 'bridge', userId, 'releases', type, tmdbId ] });
         }
+    });
+}
+
+/** "Acompanhar": Sonarr downloads each new episode as it airs. */
+export function useFollow(tmdbId?: number) {
+    const { api, userId } = useBridgeCtx();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (on: boolean) => bridgeFetch<{ ok: boolean, following: boolean }>(api!, '/api/follow', {
+            method: 'POST',
+            body: JSON.stringify({ tmdbId, on })
+        }),
+        onSuccess: () => {
+            void qc.invalidateQueries({ queryKey: [ 'freitas', 'bridge', userId, 'state', 'tv', tmdbId ] });
+        }
+    });
+}
+
+/** Search the whole catalog (name, TMDB id or link, IMDb id). */
+export function useCatalogSearch(query: string) {
+    const { api, userId, enabled } = useBridgeCtx();
+    const q = query.trim();
+    return useQuery({
+        queryKey: [ 'freitas', 'bridge', userId, 'search', q.toLowerCase() ],
+        queryFn: ({ signal }) => bridgeFetch<{ query: string, items: CatalogItem[] }>(api!, `/api/search?q=${encodeURIComponent(q)}`, {}, signal),
+        enabled: enabled && q.length >= 2,
+        retry: false,
+        staleTime: 5 * 60 * 1000,
+        placeholderData: prev => prev
     });
 }
 
@@ -262,7 +327,10 @@ export function formatAge(days: number): string {
     if (days <= 0) return 'hoje';
     if (days === 1) return 'ontem';
     if (days < 30) return `${days} dias`;
-    if (days < 365) return `${Math.round(days / 30)} meses`;
+    if (days < 365) {
+        const m = Math.max(1, Math.round(days / 30));
+        return m === 1 ? '1 mês' : `${m} meses`;
+    }
     const y = Math.round(days / 365);
     return y === 1 ? '1 ano' : `${y} anos`;
 }
@@ -279,6 +347,24 @@ export function freeleechLabel(r: Release): string {
     if (r.freeleech >= 100) return 'FL';
     if (r.freeleech > 0) return `FL ${r.freeleech}%`;
     return '';
+}
+
+/** "T2 completa", "E05", "E05–E07" */
+export function episodesLabel(r: Release): string {
+    if (r.fullSeason) return r.seasonNumber != null ? `T${r.seasonNumber} completa` : 'Temporada completa';
+    const eps = r.episodes || [];
+    if (!eps.length) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return eps.length === 1 ? `E${pad(eps[0])}` : `E${pad(eps[0])}–E${pad(eps[eps.length - 1])}`;
+}
+
+const MONTHS = [ 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez' ];
+/** "12 nov" (or "12 nov 2027" when not this year) */
+export function shortDate(iso?: string): string {
+    if (!iso) return '';
+    const [ y, m, d ] = iso.slice(0, 10).split('-').map(Number);
+    if (!y || !m || !d) return '';
+    return `${d} ${MONTHS[m - 1]}${y !== new Date().getFullYear() ? ' ' + y : ''}`;
 }
 
 export function ptbrLabel(r: Release): string {

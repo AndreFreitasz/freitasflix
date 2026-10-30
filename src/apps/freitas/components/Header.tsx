@@ -103,7 +103,7 @@ const Header: FC<HeaderProps> = ({ overlay = false, inline = false }) => {
             <div className='fp-actions'>
                 <span className='fp-action fp-action--extra' title='Assistir juntos'><SyncPlayButton /></span>
                 <span className='fp-action fp-action--extra' title='Transmitir'><RemotePlayButton /></span>
-                <a className='fp-action fp-btn-icon' href='#/search' aria-label='Buscar' title='Buscar'>
+                <a className='fp-action fp-btn-icon' href={hasBridge ? '#/descobrir?busca=1' : '#/search'} aria-label='Buscar' title='Buscar'>
                     <Icon name='search' />
                 </a>
                 <span className='fp-action fp-action--avatar'><UserMenuButton /></span>

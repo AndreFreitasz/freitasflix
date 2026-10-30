@@ -4,12 +4,16 @@ import layoutManager from 'components/layoutManager';
 
 import {
     type CatalogItem,
+    type MediaKind,
     type Release,
+    type SeasonProgress,
+    episodesLabel,
     formatAge,
     formatBytes,
     freeleechLabel,
     ptbrLabel,
     resolutionLabel,
+    shortDate,
     useGrab,
     useReleases
 } from '../bridge';
@@ -18,6 +22,7 @@ import { Icon } from './Icons';
 
 /** Where a catalog item leads: the normal title page when it is already in the library. */
 export function catalogUrl(item: Pick<CatalogItem, 'type' | 'tmdbId' | 'state' | 'jellyfinId'>): string {
+    // complete titles open the normal page; incomplete series open the catalog page to download what is missing
     if (item.state === 'library' && item.jellyfinId) return `#/titulo?id=${item.jellyfinId}`;
     return `#/catalogo?type=${item.type}&tmdb=${item.tmdbId}`;
 }
@@ -25,6 +30,29 @@ export function catalogUrl(item: Pick<CatalogItem, 'type' | 'tmdbId' | 'state' |
 const kindLabel = (item: CatalogItem) => {
     if (item.type === 'movie') return 'Filme';
     return item.originalLanguage === 'ja' ? 'Anime' : 'Série';
+};
+
+const CardBadge: FC<{ item: CatalogItem }> = ({ item }) => {
+    switch (item.state) {
+        case 'library':
+            return <span className='fp-badge fp-badge--lib'><Icon name='check' size={14} strokeWidth={2.6} className='' />Na biblioteca</span>;
+        case 'partial':
+            return <span className='fp-badge fp-badge--part'>{item.missing === 1 ? 'Falta 1 episódio' : `Faltam ${item.missing} episódios`}</span>;
+        case 'downloading':
+            return (
+                <span className='fp-badge fp-badge--dl'>
+                    <Icon name='download' size={14} className='' />
+                    {item.progress != null ? `${Math.floor(item.progress)}%` : 'Baixando'}
+                </span>
+            );
+        default:
+            if (item.availability === 'cinema') return <span className='fp-badge fp-badge--cine'>No cinema</span>;
+            if (item.availability === 'upcoming') {
+                const when = shortDate(item.availableDate || item.date);
+                return <span className='fp-badge fp-badge--soon'>{when ? `Estreia ${when}` : 'Em breve'}</span>;
+            }
+            return null;
+    }
 };
 
 /** Poster card for a TMDB title (may or may not be in the library). */
@@ -41,15 +69,7 @@ export const CatalogCard: FC<{ item: CatalogItem }> = ({ item }) => {
                         <img src={item.poster} alt='' loading='lazy' decoding='async' onError={onError} />
                     )}
                 </div>
-                {item.state === 'library' && (
-                    <span className='fp-badge fp-badge--lib'><Icon name='check' size={14} strokeWidth={2.6} className='' />Na biblioteca</span>
-                )}
-                {item.state === 'downloading' && (
-                    <span className='fp-badge fp-badge--dl'>
-                        <Icon name='download' size={14} className='' />
-                        {item.progress != null ? `${Math.floor(item.progress)}%` : 'Baixando'}
-                    </span>
-                )}
+                <CardBadge item={item} />
                 <div className='fp-plate'>
                     <span className='fp-plate__eyebrow'>{eyebrow}</span>
                     <span className='fp-plate__title'>{item.title}</span>
@@ -90,8 +110,33 @@ const SORT_OPTIONS: { value: SortBy, label: string }[] = [
     { value: 'size', label: 'Menores' }
 ];
 
-function applyFilters(list: Release[], res: ResFilter, onlyPt: boolean, onlyFl: boolean, sort: SortBy) {
+/** A series release that brings at least one episode the user does not have. */
+function coversMissing(r: Release, season?: SeasonProgress) {
+    if (!season) return true;
+    if (r.fullSeason) return season.missingEpisodes.length > 0 || season.owned < season.episodes;
+    const eps = r.episodes || [];
+    if (!eps.length) return true;
+    return eps.some(e => season.missingEpisodes.includes(e) || e > season.aired);
+}
+
+function alreadyHave(r: Release, season?: SeasonProgress) {
+    if (!season || r.fullSeason) return false;
+    const eps = r.episodes || [];
+    return eps.length > 0 && eps.every(e => e <= season.aired && !season.missingEpisodes.includes(e));
+}
+
+interface Filters {
+    res: ResFilter
+    onlyPt: boolean
+    onlyFl: boolean
+    onlyMissing: boolean
+    sort: SortBy
+}
+
+function applyFilters(list: Release[], f: Filters, season?: SeasonProgress) {
+    const { res, onlyPt, onlyFl, onlyMissing, sort } = f;
     const out = list.filter(r => {
+        if (onlyMissing && !coversMissing(r, season)) return false;
         if (res !== 'all') {
             const want = Number(res);
             if (want === 720 ? r.resolution > 720 || r.resolution === 0 : r.resolution !== want) return false;
@@ -107,13 +152,14 @@ function applyFilters(list: Release[], res: ResFilter, onlyPt: boolean, onlyFl: 
 
 interface ReleaseRowProps {
     release: Release
+    season?: SeasonProgress
     selected: boolean
     busy: boolean
     onSelect: (key?: string) => void
     onConfirm: (key: string) => void
 }
 
-const ReleaseRow: FC<ReleaseRowProps> = ({ release: r, selected, busy, onSelect, onConfirm }) => {
+const ReleaseRow: FC<ReleaseRowProps> = ({ release: r, season, selected, busy, onSelect, onConfirm }) => {
     const confirmRef = useRef<HTMLButtonElement>(null);
     const mainRef = useRef<HTMLButtonElement>(null);
     const onClick = useCallback(() => onSelect(selected ? undefined : r.key), [ onSelect, selected, r.key ]);
@@ -130,17 +176,21 @@ const ReleaseRow: FC<ReleaseRowProps> = ({ release: r, selected, busy, onSelect,
     const fl = freeleechLabel(r);
     const pt = ptbrLabel(r);
     const res = resolutionLabel(r.resolution);
+    const eps = episodesLabel(r);
+    const have = alreadyHave(r, season);
     const why = r.rejected ? `O Radarr não recomenda: ${r.rejections.join('; ')}` : undefined;
 
     return (
         <li className={'fp-rel' + (selected ? ' is-selected' : '') + (r.rejected ? ' is-rejected' : '')}>
             <button ref={mainRef} type='button' className='fp-rel__main' onClick={onClick} title={why} aria-expanded={selected}>
                 <span className='fp-rel__tags'>
+                    {eps && <span className='fp-tag fp-tag--ep'>{eps}</span>}
                     {res && <span className='fp-tag fp-tag--res'>{res}</span>}
                     {r.source && <span className='fp-tag'>{r.source}</span>}
                     {pt && <span className='fp-tag fp-tag--pt'>{pt}</span>}
                     {fl && <span className='fp-tag fp-tag--fl'>{fl}</span>}
                     {r.doubleUpload && <span className='fp-tag fp-tag--up'>2× UP</span>}
+                    {have && <span className='fp-tag fp-tag--have'>Você já tem</span>}
                     {r.rejected && <span className='fp-tag fp-tag--warn'>Não recomendado</span>}
                 </span>
                 <span className='fp-rel__title'>{r.title}</span>
@@ -178,22 +228,38 @@ function useElapsed(running: boolean) {
     return s;
 }
 
+interface ReleasesPanelProps {
+    type: MediaKind
+    tmdbId: number
+    /** series: the season being downloaded, with what is on disk */
+    season?: SeasonProgress
+    seasonNumber?: number
+    onClose: () => void
+    onStarted: () => void
+}
+
 /** "Baixar" panel: the options found in the user's trackers, with filters. */
-export const ReleasesPanel: FC<{ tmdbId: number, onClose: () => void, onStarted: () => void }> = ({ tmdbId, onClose, onStarted }) => {
-    const { data, isLoading, isError, error, refetch, isFetching } = useReleases(tmdbId, true);
-    const grab = useGrab(tmdbId);
+export const ReleasesPanel: FC<ReleasesPanelProps> = ({ type, tmdbId, season, seasonNumber, onClose, onStarted }) => {
+    const { data, isLoading, isError, error, refetch, isFetching } = useReleases(type, tmdbId, seasonNumber, true);
+    const grab = useGrab(type, tmdbId);
     const [ res, setRes ] = useState<ResFilter>('all');
     const [ sort, setSort ] = useState<SortBy>('rec');
     const [ onlyPt, setOnlyPt ] = useState(false);
     const [ onlyFl, setOnlyFl ] = useState(false);
+    const canFilterMissing = type === 'tv' && !!season && season.owned > 0;
+    const [ onlyMissing, setOnlyMissing ] = useState(canFilterMissing);
     const [ selected, setSelected ] = useState<string>();
     const elapsed = useElapsed(isLoading);
     const panelRef = useRef<HTMLElement>(null);
 
-    const list = useMemo(() => applyFilters(data?.releases || [], res, onlyPt, onlyFl, sort), [ data, res, onlyPt, onlyFl, sort ]);
+    useEffect(() => setOnlyMissing(canFilterMissing), [ canFilterMissing, seasonNumber ]);
+
+    const list = useMemo(
+        () => applyFilters(data?.releases || [], { res, onlyPt, onlyFl, onlyMissing: onlyMissing && canFilterMissing, sort }, season),
+        [ data, res, onlyPt, onlyFl, onlyMissing, canFilterMissing, sort, season ]
+    );
 
     useEffect(() => {
-        // remotes need a starting point inside the panel
         if (!layoutManager.tv) return;
         const panel = panelRef.current;
         (panel?.querySelector<HTMLElement>('.fp-rel__main') || panel?.querySelector<HTMLElement>('button'))?.focus();
@@ -203,6 +269,7 @@ export const ReleasesPanel: FC<{ tmdbId: number, onClose: () => void, onStarted:
     const onSort = useCallback((v: string) => setSort(v as SortBy), []);
     const togglePt = useCallback(() => setOnlyPt(v => !v), []);
     const toggleFl = useCallback(() => setOnlyFl(v => !v), []);
+    const toggleMissing = useCallback(() => setOnlyMissing(v => !v), []);
     const onRetry = useCallback(() => {
         refetch().catch(() => undefined);
     }, [ refetch ]);
@@ -210,10 +277,12 @@ export const ReleasesPanel: FC<{ tmdbId: number, onClose: () => void, onStarted:
         grab.mutate(key, { onSuccess: onStarted });
     }, [ grab, onStarted ]);
 
+    const heading = type === 'tv' && seasonNumber != null ? `Temporada ${seasonNumber} nos seus trackers` : 'Opções nos seus trackers';
+
     return (
         <section className='fp-releases fp-pad' ref={panelRef} aria-label='Opções de download'>
             <div className='fp-releases__head'>
-                <h2 className='fp-releases__title'>Opções nos seus trackers</h2>
+                <h2 className='fp-releases__title'>{heading}</h2>
                 <button type='button' className='fp-btn-ghost' onClick={onClose} aria-label='Fechar opções'>
                     <Icon name='close' size={18} className='' /><span>Fechar</span>
                 </button>
@@ -245,6 +314,9 @@ export const ReleasesPanel: FC<{ tmdbId: number, onClose: () => void, onStarted:
                         <div className='fp-chipgroup' role='group' aria-label='Filtros'>
                             <button type='button' className='fp-chipbtn' aria-pressed={onlyPt} onClick={togglePt}>Só PT-BR</button>
                             <button type='button' className='fp-chipbtn' aria-pressed={onlyFl} onClick={toggleFl}>Só freeleech</button>
+                            {canFilterMissing && (
+                                <button type='button' className='fp-chipbtn' aria-pressed={onlyMissing} onClick={toggleMissing}>Só o que falta</button>
+                            )}
                         </div>
                     </div>
 
@@ -268,6 +340,7 @@ export const ReleasesPanel: FC<{ tmdbId: number, onClose: () => void, onStarted:
                                 <ReleaseRow
                                     key={r.key}
                                     release={r}
+                                    season={season}
                                     selected={selected === r.key}
                                     busy={grab.isPending}
                                     onSelect={setSelected}

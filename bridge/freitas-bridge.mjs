@@ -14,11 +14,14 @@
  *   JELLYFIN_URL          http://192.168.1.250:8097         (required)
  *   TMDB_API_KEY          TMDB v3 key or v4 read token      (required for the catalog)
  *   RADARR_URL / RADARR_API_KEY
+ *   SONARR_URL / SONARR_API_KEY                             (series)
  *   PROWLARR_URL / PROWLARR_API_KEY                         (extra search by title)
  *   QBIT_URL / QBIT_USER / QBIT_PASS                        (grabs found only by title)
  *   QBIT_MOVIE_CATEGORY   radarr
+ *   QBIT_TV_CATEGORY      tv-sonarr   (the category Sonarr uses in qBittorrent)
  *   RADARR_ROOT_FOLDER    first root folder in Radarr
  *   RADARR_QUALITY_PROFILE  name; first profile in Radarr when empty
+ *   SONARR_ROOT_FOLDER / SONARR_QUALITY_PROFILE            (same, for Sonarr)
  *   ALLOW_DOWNLOAD        admins | all | comma separated user names   (default admins)
  *   TMDB_LANGUAGE         pt-BR
  *   TMDB_REGION           BR
@@ -38,9 +41,13 @@ export const config = {
     language: env.TMDB_LANGUAGE || 'pt-BR',
     region: env.TMDB_REGION || 'BR',
     radarr: { url: trimSlash(env.RADARR_URL), key: (env.RADARR_API_KEY || '').trim() },
+    sonarr: { url: trimSlash(env.SONARR_URL), key: (env.SONARR_API_KEY || '').trim() },
     prowlarr: { url: trimSlash(env.PROWLARR_URL), key: (env.PROWLARR_API_KEY || '').trim() },
     qbit: { url: trimSlash(env.QBIT_URL), user: env.QBIT_USER || '', pass: env.QBIT_PASS || '' },
     qbitMovieCategory: env.QBIT_MOVIE_CATEGORY || 'radarr',
+    qbitTvCategory: env.QBIT_TV_CATEGORY || 'tv-sonarr',
+    sonarrRoot: env.SONARR_ROOT_FOLDER || '',
+    sonarrProfile: env.SONARR_QUALITY_PROFILE || '',
     radarrRoot: env.RADARR_ROOT_FOLDER || '',
     radarrProfile: env.RADARR_QUALITY_PROFILE || '',
     allowDownload: (env.ALLOW_DOWNLOAD || 'admins').trim()
@@ -69,6 +76,28 @@ async function cached(key, ttlMs, fn) {
     }
     return value;
 }
+
+/** Runs at most n async jobs at once (TMDB allows ~40 requests/s; be polite). */
+function limiter(n) {
+    let active = 0;
+    const waiting = [];
+    const next = () => {
+        if (active >= n || !waiting.length) return;
+        active++;
+        const job = waiting.shift();
+        job.fn().then(job.resolve, job.reject).finally(() => {
+            active--;
+            next();
+        });
+    };
+    return fn => new Promise((resolve, reject) => {
+        waiting.push({ fn, resolve, reject });
+        next();
+    });
+}
+
+const DAY = 86400000;
+const isoDay = t => new Date(t).toISOString().slice(0, 10);
 
 async function fetchJson(url, init = {}, timeoutMs = 20000) {
     const ctrl = new AbortController();
@@ -180,14 +209,67 @@ export function mapTmdbItem(r, forcedType) {
     };
 }
 
+const tmdbLimit = limiter(8);
+
+/*
+ * Where a movie can be had. Trackers only have a movie once it is out digitally (or on disc),
+ * so movies still only in theaters, or not released yet, are kept out of the regular rows
+ * and shown only in "No cinema" / "Futuros lançamentos".
+ */
+export async function movieAvailability(tmdbId, releaseDate) {
+    const now = Date.now();
+    const rel = releaseDate ? Date.parse(releaseDate) : NaN;
+    if (rel && now - rel > 240 * DAY) return { availability: 'digital' };
+    return cached('avail:' + tmdbId, 12 * 3600000, async () => {
+        let body;
+        try {
+            body = await tmdbLimit(() => tmdb(`/movie/${tmdbId}/release_dates`, {}, 12 * 3600000));
+        } catch {
+            return { availability: 'digital' }; // unknown: don't hide it
+        }
+        let firstTheater = 0;
+        let nextLocal = 0;
+        let nextAny = 0;
+        let digitalSoon = 0;
+        for (const country of body?.results || []) {
+            for (const d of country.release_dates || []) {
+                const t = Date.parse(d.release_date);
+                if (!t) continue;
+                if (d.type >= 4) {
+                    // 4 digital, 5 physical, 6 TV
+                    if (t <= now) return { availability: 'digital' };
+                    digitalSoon = digitalSoon ? Math.min(digitalSoon, t) : t;
+                } else if (t <= now) {
+                    firstTheater = firstTheater ? Math.min(firstTheater, t) : t;
+                } else {
+                    nextAny = nextAny ? Math.min(nextAny, t) : t;
+                    if (country.iso_3166_1 === config.region) nextLocal = nextLocal ? Math.min(nextLocal, t) : t;
+                }
+            }
+        }
+        // old movies often have no digital entry at all; after months in theaters it is out
+        if (firstTheater && now - firstTheater > 150 * DAY) return { availability: 'digital' };
+        if (firstTheater) return { availability: 'cinema', ...(digitalSoon ? { availableDate: isoDay(digitalSoon) } : {}) };
+        const when = nextLocal || nextAny || rel;
+        return { availability: 'upcoming', ...(when ? { availableDate: isoDay(when) } : {}) };
+    });
+}
+
+const recentWindow = () => ({ 'release_date.gte': isoDay(Date.now() - 120 * DAY), 'release_date.lte': isoDay(Date.now()) });
+
+/*
+ * only: 'digital' keeps movies that can be downloaded (plus anything in the library),
+ *       'cinema' keeps movies only in theaters, 'upcoming' those not released yet.
+ */
 const SECTIONS = [
-    { id: 'trending-movies', title: 'Filmes em alta', type: 'movie', path: '/trending/movie/week' },
-    { id: 'now-playing', title: 'Lançamentos nos cinemas', type: 'movie', path: '/movie/now_playing', region: true },
+    { id: 'trending-movies', title: 'Filmes em alta', type: 'movie', path: '/trending/movie/week', pages: 2, only: 'digital' },
+    { id: 'new-digital', title: 'Chegaram para baixar', type: 'movie', path: '/discover/movie', pages: 2, only: 'digital', params: () => ({ sort_by: 'popularity.desc', with_release_type: '4|5', 'vote_count.gte': 15, ...recentWindow() }) },
     { id: 'trending-tv', title: 'Séries em alta', type: 'tv', path: '/trending/tv/week' },
-    { id: 'anime', title: 'Animes em alta', type: 'tv', path: '/discover/tv', params: { with_genres: 16, with_original_language: 'ja', sort_by: 'popularity.desc' } },
-    { id: 'upcoming', title: 'Em breve nos cinemas', type: 'movie', path: '/movie/upcoming', region: true },
-    { id: 'popular-movies', title: 'Filmes populares', type: 'movie', path: '/movie/popular', region: true },
-    { id: 'top-movies', title: 'Filmes mais bem avaliados', type: 'movie', path: '/movie/top_rated' },
+    { id: 'anime', title: 'Animes em alta', type: 'tv', path: '/discover/tv', params: () => ({ with_genres: 16, with_original_language: 'ja', sort_by: 'popularity.desc' }) },
+    { id: 'popular-movies', title: 'Filmes populares', type: 'movie', path: '/movie/popular', pages: 2, only: 'digital' },
+    { id: 'now-playing', title: 'No cinema', type: 'movie', path: '/movie/now_playing', region: true, pages: 2, only: 'cinema' },
+    { id: 'upcoming', title: 'Futuros lançamentos', type: 'movie', path: '/movie/upcoming', region: true, pages: 2, only: 'upcoming' },
+    { id: 'top-movies', title: 'Filmes mais bem avaliados', type: 'movie', path: '/movie/top_rated', only: 'digital' },
     { id: 'top-tv', title: 'Séries mais bem avaliadas', type: 'tv', path: '/tv/top_rated' }
 ];
 
@@ -213,7 +295,80 @@ async function libraryIndex(user) {
     });
 }
 
-/* ---------------- Radarr / Prowlarr / qBittorrent ---------------- */
+/** Episodes on disk, per Jellyfin series id: Map(season -> Set(episode numbers)). */
+async function libraryEpisodes(user) {
+    return cached('eps:' + user.id, 3 * 60000, async () => {
+        const url = new URL(`${config.jellyfin}/Items`);
+        url.searchParams.set('userId', user.id);
+        url.searchParams.set('Recursive', 'true');
+        url.searchParams.set('IncludeItemTypes', 'Episode');
+        url.searchParams.set('IsMissing', 'false');
+        url.searchParams.set('EnableImages', 'false');
+        url.searchParams.set('EnableUserData', 'false');
+        const body = await fetchJson(url.toString(), { headers: jellyfinAuth(user.token) }, 30000);
+        const out = new Map();
+        for (const ep of body?.Items || []) {
+            if (!ep.SeriesId || ep.LocationType === 'Virtual' || ep.IndexNumber == null) continue;
+            const season = ep.ParentIndexNumber ?? 1;
+            if (!out.has(ep.SeriesId)) out.set(ep.SeriesId, new Map());
+            const seasons = out.get(ep.SeriesId);
+            if (!seasons.has(season)) seasons.set(season, new Set());
+            const last = Math.max(ep.IndexNumber, ep.IndexNumberEnd || 0); // "S01E01-E02" files
+            for (let n = ep.IndexNumber; n <= last; n++) seasons.get(season).add(n);
+        }
+        return out;
+    });
+}
+
+/**
+ * What the user has of a series compared with what has aired (TMDB), per season.
+ * A series with one or two episodes on disk is not "in the library" for downloading purposes.
+ */
+export function seasonProgress(details, owned, now = Date.now()) {
+    const last = details.last_episode_to_air;
+    const next = details.next_episode_to_air;
+    const seasons = (details.seasons || []).filter(x => x.season_number > 0).map(x => {
+        const n = x.season_number;
+        let aired = 0;
+        if (last?.season_number != null) {
+            if (n < last.season_number) aired = x.episode_count || 0;
+            else if (n === last.season_number) aired = Math.max(last.episode_number || 0, 0);
+        } else if (x.air_date && Date.parse(x.air_date) <= now) {
+            aired = x.episode_count || 0;
+        }
+        const have = owned?.get(n) || new Set();
+        const missingEpisodes = [];
+        for (let e = 1; e <= aired; e++) if (!have.has(e)) missingEpisodes.push(e);
+        return {
+            number: n,
+            name: x.name || `Temporada ${n}`,
+            episodes: x.episode_count || 0,
+            aired,
+            have: aired - missingEpisodes.length,
+            owned: have.size,
+            missingEpisodes,
+            year: year(x.air_date)
+        };
+    });
+    const aired = seasons.reduce((t, x) => t + x.aired, 0);
+    const missing = seasons.reduce((t, x) => t + x.missingEpisodes.length, 0);
+    return {
+        seasons,
+        aired,
+        have: aired - missing,
+        missing,
+        ongoing: !!next || /returning|in production/i.test(details.status || ''),
+        nextEpisode: next ? { season: next.season_number, episode: next.episode_number, date: next.air_date || '' } : undefined
+    };
+}
+
+async function tvProgress(user, tmdbId, jellyfinId) {
+    const d = await tmdbLimit(() => tmdb(`/tv/${tmdbId}`, {}, 6 * 3600000));
+    const owned = jellyfinId ? (await libraryEpisodes(user)).get(jellyfinId) : undefined;
+    return seasonProgress(d, owned);
+}
+
+/* ---------------- Radarr / Sonarr / Prowlarr / qBittorrent ---------------- */
 
 const arr = (svc, path, init = {}, timeoutMs = 20000) => {
     if (!svc.url || !svc.key) throw new HttpError(503, 'Serviço não configurado na ponte.');
@@ -223,6 +378,7 @@ const arr = (svc, path, init = {}, timeoutMs = 20000) => {
     }, timeoutMs);
 };
 const radarr = (path, init, t) => arr(config.radarr, path, init, t);
+const sonarr = (path, init, t) => arr(config.sonarr, path, init, t);
 const prowlarr = (path, init, t) => arr(config.prowlarr, path, init, t);
 
 let qbitCookie = '';
@@ -274,7 +430,7 @@ async function movieQueue() {
                     progress: size ? Math.max(0, Math.min(100, Math.round((1 - left / size) * 1000) / 10)) : 0,
                     status: String(r.trackedDownloadState || r.status || 'downloading').toLowerCase(),
                     timeleft: r.timeleft || '',
-                    title: r.title || ''
+                    downloadTitle: r.title || ''
                 });
             }
         } catch (err) {
@@ -290,7 +446,7 @@ async function movieQueue() {
                         progress: Math.round((t.progress || 0) * 1000) / 10,
                         status: t.progress >= 1 ? 'importing' : 'downloading',
                         timeleft: '',
-                        title: t.name || ''
+                        downloadTitle: safeName(t.name)
                     });
                 }
             } catch (err) {
@@ -301,15 +457,114 @@ async function movieQueue() {
     });
 }
 
-async function stateOf(user, type, tmdbId) {
-    const lib = await libraryIndex(user).catch(() => new Map());
-    const jellyfinId = lib.get(`${type}:${tmdbId}`);
-    if (jellyfinId) return { state: 'library', jellyfinId };
-    if (type === 'movie') {
-        const dl = (await movieQueue()).get(String(tmdbId));
+/** Series downloads in progress (Sonarr queue + torrents sent by the bridge), by TMDB id. */
+async function tvQueue() {
+    if (!config.sonarr.url && !config.qbit.url) return new Map();
+    return cached('queue:tv', 8000, async () => {
+        const agg = new Map();
+        const add = (tmdbId, downloadId, size, left, extra) => {
+            const key = String(tmdbId);
+            const cur = agg.get(key) || { ids: new Set(), size: 0, left: 0, title: '', timeleft: '', status: 'downloading' };
+            if (cur.ids.has(downloadId)) return; // a season pack shows once per episode
+            cur.ids.add(downloadId);
+            cur.size += size;
+            cur.left += left;
+            Object.assign(cur, extra);
+            agg.set(key, cur);
+        };
+        if (config.sonarr.url) {
+            try {
+                const q = await sonarr('/api/v3/queue?pageSize=1000&includeSeries=true&includeUnknownSeriesItems=false');
+                for (const r of q?.records || []) {
+                    const tmdbId = r.series?.tmdbId;
+                    if (!tmdbId) continue;
+                    add(tmdbId, r.downloadId || r.id, r.size || 0, r.sizeleft ?? r.size ?? 0, {
+                        title: r.title || '',
+                        timeleft: r.timeleft || '',
+                        status: String(r.trackedDownloadState || r.status || 'downloading').toLowerCase()
+                    });
+                }
+            } catch (err) {
+                log('sonarr queue', err.message);
+            }
+        }
+        if (config.qbit.url) {
+            try {
+                const list = await qbit(`torrents/info?category=${encodeURIComponent(config.qbitTvCategory)}`);
+                for (const t of Array.isArray(list) ? list : []) {
+                    const m = String(t.tags || '').match(/fp-tv-(\d+)/);
+                    if (!m || t.progress >= 1) continue;
+                    add(m[1], t.hash || t.name, t.size || 1, (t.size || 1) * (1 - (t.progress || 0)), { title: safeName(t.name) });
+                }
+            } catch (err) {
+                log('qbit tv queue', err.message);
+            }
+        }
+        const out = new Map();
+        for (const [k, v] of agg) {
+            out.set(k, {
+                progress: v.size ? Math.max(0, Math.min(100, Math.round((1 - v.left / v.size) * 1000) / 10)) : 0,
+                status: v.status,
+                timeleft: v.timeleft,
+                downloadTitle: v.ids.size > 1 ? `${v.ids.size} downloads` : v.title
+            });
+        }
+        return out;
+    });
+}
+
+/** Never echo links (Prowlarr download links carry its API key). */
+const safeName = n => (/^(https?|magnet):|apikey=/i.test(String(n || '')) ? '' : String(n || ''));
+
+const progressFields = p => (p ? { have: p.have, aired: p.aired, missing: p.missing, ongoing: p.ongoing } : {});
+
+/**
+ * library     everything that is out is on disk
+ * partial     series on disk with episodes missing (can still download)
+ * downloading something is on its way
+ * none        nothing
+ * Movies that are not on disk also carry their availability (digital / cinema / upcoming).
+ */
+async function stateFor(user, ctx, it, full = false) {
+    const key = `${it.type}:${it.tmdbId}`;
+    const jellyfinId = ctx.lib.get(key);
+    if (it.type === 'movie') {
+        if (jellyfinId) return { state: 'library', jellyfinId };
+        const dl = ctx.movies.get(String(it.tmdbId));
         if (dl) return { state: 'downloading', ...dl };
+        return { state: 'none', ...(await movieAvailability(it.tmdbId, it.date)) };
     }
-    return { state: 'none' };
+    const dl = ctx.tv.get(String(it.tmdbId));
+    let prog = null;
+    if (jellyfinId || full) prog = await tvProgress(user, it.tmdbId, jellyfinId).catch(() => null);
+    const extra = full && prog ? { seasons: prog.seasons, nextEpisode: prog.nextEpisode } : {};
+    if (dl) return { state: 'downloading', jellyfinId, ...dl, ...progressFields(prog), ...extra };
+    if (!jellyfinId) return { state: 'none', ...progressFields(prog), ...extra };
+    const complete = !prog || prog.missing === 0;
+    return { state: complete ? 'library' : 'partial', jellyfinId, ...progressFields(prog), ...extra };
+}
+
+async function stateContext(user) {
+    const [ lib, movies, tv ] = await Promise.all([
+        libraryIndex(user).catch(() => new Map()),
+        movieQueue().catch(() => new Map()),
+        tvQueue().catch(() => new Map())
+    ]);
+    return { lib, movies, tv };
+}
+
+async function decorate(user, items, ctx) {
+    const c = ctx || await stateContext(user);
+    return Promise.all(items.map(async it => ({ ...it, ...(await stateFor(user, c, it)) })));
+}
+
+async function stateOf(user, type, tmdbId) {
+    const ctx = await stateContext(user);
+    let date;
+    if (type === 'movie') date = (await tmdb(`/movie/${tmdbId}`, {}, 24 * 3600000).catch(() => null))?.release_date;
+    const st = await stateFor(user, ctx, { type, tmdbId, date }, true);
+    if (type === 'tv') st.following = await sonarrFollowing(tmdbId).catch(() => undefined);
+    return st;
 }
 
 /* ---------------- releases ---------------- */
@@ -420,6 +675,7 @@ function normalizeRadarr(r, movieId) {
     const flags = parseFlags(r.indexerFlags);
     const langs = (r.languages || []).map(l => l.name).filter(Boolean);
     const rec = {
+        kind: 'movie',
         origin: 'radarr',
         movieId,
         guid: r.guid,
@@ -445,9 +701,10 @@ function normalizeRadarr(r, movieId) {
     return rec;
 }
 
-function normalizeProwlarr(r) {
+function normalizeProwlarr(r, kind = 'movie') {
     const flags = parseFlags(r.indexerFlags);
     const rec = {
+        kind,
         origin: 'prowlarr',
         guid: r.guid,
         indexerId: r.indexerId,
@@ -473,6 +730,8 @@ function normalizeProwlarr(r) {
     rec.score = recommendScore(rec);
     return rec;
 }
+
+const isTorrent = r => r.protocol === 'torrent' || r.protocol === 1 || !r.protocol;
 
 const words = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -510,7 +769,7 @@ async function movieReleases(tmdbId) {
     const names = [ ...new Set([ name, clean(ptDetails?.title), clean(details?.original_title) ].filter(Boolean)) ].slice(0, 3);
     const yr = movie.year || year(details?.release_date);
     const searchText = n => prowlarr(`/api/v1/search?query=${encodeURIComponent(`${n} ${yr || ''}`.trim())}&type=search&categories=2000&limit=100`, {}, 120000)
-        .then(list => (list || []).filter(r => r.protocol === 'torrent' || r.protocol === 1 || !r.protocol).map(normalizeProwlarr))
+        .then(list => (list || []).filter(isTorrent).map(r => normalizeProwlarr(r)))
         .catch(err => {
             errors.push('Prowlarr: ' + err.message);
             return [];
@@ -535,10 +794,228 @@ async function movieReleases(tmdbId) {
     };
 }
 
+/* ---------------- series (Sonarr) ---------------- */
+
+const pad2 = n => String(n).padStart(2, '0');
+
+/** Season / episodes a release covers, from its name ("S02", "S02E05", "S02E05-E06", "Temporada 2"). */
+export function parseEpisodes(title) {
+    const t = String(title || '');
+    let m = t.match(/\bS(\d{1,2})[ ._-]?E(\d{1,3})(?:[ ._-]?-?[ ._-]?E?(\d{1,3}))?\b/i);
+    if (m) {
+        const a = Number(m[2]);
+        const b = m[3] ? Number(m[3]) : a;
+        const eps = [];
+        for (let e = a; e <= Math.min(b, a + 40); e++) eps.push(e);
+        return { season: Number(m[1]), episodes: eps, fullSeason: false };
+    }
+    m = t.match(/\bS(\d{1,2})\b(?!E)/i) || t.match(/\b(?:season|temporada)[ ._-]?(\d{1,2})\b/i);
+    if (m) return { season: Number(m[1]), episodes: [], fullSeason: true };
+    return null;
+}
+
+async function sonarrSeriesByTmdb(tmdbId) {
+    const ext = await tmdb(`/tv/${tmdbId}/external_ids`, {}, 24 * 3600000);
+    const tvdbId = ext?.tvdb_id;
+    if (!tvdbId) throw new HttpError(404, 'Essa série não tem ID no TVDB, então o Sonarr não consegue baixá-la.');
+    const existing = await sonarr(`/api/v3/series?tvdbId=${tvdbId}`);
+    return { tvdbId, series: Array.isArray(existing) ? existing[0] : undefined };
+}
+
+async function sonarrFollowing(tmdbId) {
+    if (!config.sonarr.url) return undefined;
+    return cached('follow:' + tmdbId, 30000, async () => {
+        const { series } = await sonarrSeriesByTmdb(tmdbId);
+        return !!series?.monitored;
+    });
+}
+
+// Sonarr loads the episode list in the background after a series is added; searching
+// before that finds nothing. Concurrent requests share one setup.
+const seriesSetup = new Map();
+async function waitForEpisodes(seriesId) {
+    if (cache.get('eps-ready:' + seriesId)?.exp > Date.now()) return;
+    for (let i = 0; i < 16; i++) {
+        const eps = await sonarr(`/api/v3/episode?seriesId=${seriesId}`).catch(() => []);
+        if (Array.isArray(eps) && eps.length) {
+            cache.set('eps-ready:' + seriesId, { value: true, exp: Date.now() + 3600000 });
+            return;
+        }
+        await new Promise(r => setTimeout(r, 1500));
+    }
+}
+
+function ensureSonarrSeries(tmdbId) {
+    const key = String(tmdbId);
+    if (!seriesSetup.has(key)) {
+        const job = addSonarrSeries(tmdbId)
+            .then(async series => {
+                await waitForEpisodes(series.id);
+                return series;
+            })
+            .finally(() => seriesSetup.delete(key));
+        seriesSetup.set(key, job);
+    }
+    return seriesSetup.get(key);
+}
+
+async function addSonarrSeries(tmdbId) {
+    const { tvdbId, series } = await sonarrSeriesByTmdb(tmdbId);
+    if (series) return series;
+    const lookup = await sonarr(`/api/v3/series/lookup?term=${encodeURIComponent('tvdb:' + tvdbId)}`);
+    const base = Array.isArray(lookup) ? lookup[0] : undefined;
+    if (!base) throw new HttpError(404, 'O Sonarr não encontrou essa série.');
+    const roots = await cached('sonarr:roots', 60000, () => sonarr('/api/v3/rootfolder'));
+    const profiles = await cached('sonarr:profiles', 60000, () => sonarr('/api/v3/qualityprofile'));
+    // Sonarr v3 also needs a language profile (v4 removed it)
+    const langs = await cached('sonarr:langs', 60000, () => sonarr('/api/v3/languageprofile').catch(() => null));
+    const rootFolderPath = config.sonarrRoot || roots?.[0]?.path;
+    const profile = profiles?.find(x => x.name.toLowerCase() === config.sonarrProfile.toLowerCase()) || profiles?.[0];
+    if (!rootFolderPath || !profile) throw new HttpError(503, 'Configure uma pasta raiz e um perfil de qualidade no Sonarr.');
+    const details = await tmdb(`/tv/${tmdbId}`, {}, 24 * 3600000).catch(() => null);
+    const anime = details?.original_language === 'ja' && (details?.genres || []).some(g => g.id === 16);
+    // Not monitored: nothing is downloaded unless the user picks it (or turns on "Acompanhar").
+    const added = await sonarr('/api/v3/series', {
+        method: 'POST',
+        body: JSON.stringify({
+            ...base,
+            rootFolderPath,
+            qualityProfileId: profile.id,
+            ...(Array.isArray(langs) && langs[0] ? { languageProfileId: langs[0].id } : {}),
+            seriesType: anime ? 'anime' : (base.seriesType || 'standard'),
+            seasonFolder: true,
+            monitored: false,
+            seasons: (base.seasons || []).map(x => ({ ...x, monitored: false })),
+            addOptions: { monitor: 'none', searchForMissingEpisodes: false, searchForCutoffUnmetEpisodes: false }
+        })
+    });
+    cache.delete('follow:' + tmdbId);
+    return added;
+}
+
+/** "Acompanhar": Sonarr downloads new episodes by itself as they air. */
+async function setFollowing(tmdbId, on) {
+    const series = await ensureSonarrSeries(tmdbId);
+    if (on) {
+        try {
+            await sonarr('/api/v3/seasonpass', {
+                method: 'POST',
+                body: JSON.stringify({ series: [ { id: series.id, monitored: true } ], monitoringOptions: { monitor: 'future' } })
+            });
+        } catch {
+            // fallback: monitor the series and its last season
+            const lastSeason = Math.max(0, ...(series.seasons || []).map(x => x.seasonNumber));
+            await sonarr(`/api/v3/series/${series.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ ...series, monitored: true, monitorNewItems: 'all', seasons: (series.seasons || []).map(x => ({ ...x, monitored: x.seasonNumber === lastSeason })) })
+            });
+        }
+    } else {
+        const fresh = await sonarr(`/api/v3/series/${series.id}`);
+        await sonarr(`/api/v3/series/${series.id}`, { method: 'PUT', body: JSON.stringify({ ...fresh, monitored: false }) });
+    }
+    cache.delete('follow:' + tmdbId);
+    log('follow', tmdbId, on);
+    return { ok: true, following: on };
+}
+
+function normalizeSonarr(r, seriesId) {
+    const flags = parseFlags(r.indexerFlags);
+    const langs = (r.languages || []).map(l => l.name).filter(Boolean);
+    const parsed = parseEpisodes(r.title);
+    const episodes = (r.mappedEpisodeNumbers?.length ? r.mappedEpisodeNumbers : r.episodeNumbers) || parsed?.episodes || [];
+    const rec = {
+        kind: 'tv',
+        origin: 'sonarr',
+        seriesId,
+        guid: r.guid,
+        indexerId: r.indexerId,
+        indexer: cleanIndexer(r.indexer),
+        title: r.title,
+        size: r.size || 0,
+        seeders: r.seeders ?? 0,
+        leechers: r.leechers ?? 0,
+        ageDays: r.age ?? 0,
+        resolution: r.quality?.quality?.resolution || parseResolution(r.title),
+        source: parseSource(r.title) || String(r.quality?.quality?.source || ''),
+        quality: r.quality?.quality?.name || '',
+        languages: langs,
+        ptbr: ptbrOf(r.title, langs),
+        ...flags,
+        seasonNumber: r.mappedSeasonNumber ?? r.seasonNumber ?? parsed?.season,
+        episodes,
+        fullSeason: !!r.fullSeason || (!!parsed?.fullSeason && !episodes.length),
+        rejected: !!r.rejected && !(r.rejections || []).every(x => /not wanted in profile|not monitored|already meets cutoff|existing file|is not monitored/i.test(x)),
+        rejections: r.rejections || [],
+        infoUrl: r.infoUrl || '',
+        infoHash: (r.infoHash || '').toLowerCase()
+    };
+    rec.score = recommendScore(rec) + (rec.fullSeason ? 120 : 0);
+    return rec;
+}
+
+function tvTextRelease(r, season) {
+    const rec = normalizeProwlarr(r, 'tv');
+    const parsed = parseEpisodes(r.title);
+    if (!parsed || parsed.season !== season) return null;
+    rec.seasonNumber = parsed.season;
+    rec.episodes = parsed.episodes;
+    rec.fullSeason = parsed.fullSeason;
+    rec.score += rec.fullSeason ? 120 : 0;
+    return rec;
+}
+
+async function tvReleases(tmdbId, season) {
+    const series = await ensureSonarrSeries(tmdbId);
+    const errors = [];
+    const byId = sonarr(`/api/v3/release?seriesId=${series.id}&seasonNumber=${season}`, {}, 150000)
+        .then(list => (list || []).map(r => normalizeSonarr(r, series.id)).filter(r => r.seasonNumber == null || r.seasonNumber === season))
+        .catch(err => {
+            errors.push('Sonarr: ' + err.message);
+            return [];
+        });
+
+    const clean = n => (n || '').replace(/[:'’]/g, ' ').replace(/\s+/g, ' ').trim();
+    const [ en, pt ] = await Promise.all([
+        tmdb(`/tv/${tmdbId}`, { language: 'en-US' }, 24 * 3600000).catch(() => null),
+        tmdb(`/tv/${tmdbId}`, {}, 24 * 3600000).catch(() => null)
+    ]);
+    const names = [ ...new Set([ clean(en?.name || series.title), clean(pt?.name), clean(en?.original_name) ].filter(Boolean)) ].slice(0, 3);
+    const searchText = n => prowlarr(`/api/v1/search?query=${encodeURIComponent(`${n} S${pad2(season)}`)}&type=search&categories=5000&limit=100`, {}, 120000)
+        .then(list => (list || []).filter(isTorrent).map(r => tvTextRelease(r, season)).filter(Boolean))
+        .catch(err => {
+            errors.push('Prowlarr: ' + err.message);
+            return [];
+        });
+    const byText = config.prowlarr.url && names.length ? Promise.all(names.map(searchText)).then(l => l.flat()) : Promise.resolve([]);
+
+    const [ a, b ] = await Promise.all([ byId, byText ]);
+    const extra = [];
+    for (const x of b) {
+        if (!names.some(n => titleMatches(x.title, n))) continue;
+        if (a.some(y => sameRelease(x, y)) || extra.some(y => sameRelease(x, y))) continue;
+        extra.push(x);
+    }
+    const all = [ ...a, ...extra ].sort((x, y) => y.score - x.score);
+    return {
+        seriesId: series.id,
+        season,
+        releases: all.map(r => ({ key: storeRelease(r), ...publicRelease(r) })),
+        errors: [ ...new Set(errors) ]
+    };
+}
+
 async function grabRelease(key, tmdbId) {
     const r = releaseStore.get(key);
     if (!r || r.exp < Date.now()) throw new HttpError(410, 'As opções expiraram. Busque de novo.');
-    if (r.origin === 'radarr') {
+    if (r.origin === 'sonarr') {
+        try {
+            await sonarr('/api/v3/release', { method: 'POST', body: JSON.stringify({ guid: r.guid, indexerId: r.indexerId }) }, 60000);
+        } catch (err) {
+            if (err.status === 404) throw new HttpError(410, 'As opções expiraram no Sonarr. Busque de novo.');
+            throw err;
+        }
+    } else if (r.origin === 'radarr') {
         try {
             await radarr('/api/v3/release', {
                 method: 'POST',
@@ -551,14 +1028,16 @@ async function grabRelease(key, tmdbId) {
     } else {
         const source = r.downloadUrl || r.magnetUrl;
         if (!source) throw new HttpError(400, 'Essa opção não tem link de download.');
+        const tv = r.kind === 'tv';
         const res = await qbit('torrents/add', {
             urls: source,
-            category: config.qbitMovieCategory,
-            tags: `freitas,fp-movie-${tmdbId}`
+            category: tv ? config.qbitTvCategory : config.qbitMovieCategory,
+            tags: `freitas,fp-${tv ? 'tv' : 'movie'}-${tmdbId}`
         });
         if (String(res).trim() !== 'Ok.') throw new HttpError(502, 'O qBittorrent recusou o torrent.');
     }
     cache.delete('queue:movies');
+    cache.delete('queue:tv');
     releaseStore.delete(key);
     log('grab', r.origin, r.indexer, r.title);
     return { ok: true };
@@ -610,6 +1089,116 @@ async function titleDetails(user, type, tmdbId) {
     };
 }
 
+/* ---------------- catalog & search ---------------- */
+
+async function sectionItems(s) {
+    const params = { ...(s.params ? s.params() : {}), ...(s.region ? { region: config.region } : {}) };
+    const pages = await Promise.all(Array.from({ length: s.pages || 1 }, (_, i) => tmdb(s.path, { ...params, page: i + 1 }).catch(err => {
+        if (i === 0) throw err;
+        return null;
+    })));
+    const seen = new Set();
+    const out = [];
+    for (const body of pages) {
+        for (const r of body?.results || []) {
+            if (!r.poster_path || seen.has(r.id)) continue;
+            seen.add(r.id);
+            out.push(mapTmdbItem(r, s.type));
+        }
+    }
+    return out;
+}
+
+function keepFor(only, it) {
+    if (!only || it.type !== 'movie') return true;
+    if (only === 'digital') return it.state !== 'none' || it.availability === 'digital';
+    return it.state === 'none' && it.availability === only;
+}
+
+async function discover(user) {
+    const ctx = await stateContext(user);
+    const sections = await Promise.all(SECTIONS.map(async s => {
+        try {
+            const items = await decorate(user, await sectionItems(s), ctx);
+            let list = items.filter(it => keepFor(s.only, it));
+            if (s.only === 'upcoming') list.sort((a, b) => String(a.availableDate || a.date).localeCompare(String(b.availableDate || b.date)));
+            list = list.slice(0, 20);
+            return { id: s.id, title: s.title, items: list };
+        } catch (err) {
+            log('section', s.id, err.message);
+            return { id: s.id, title: s.title, items: [], error: err.message };
+        }
+    }));
+    const ok = sections.filter(s => s.items.length);
+    if (!ok.length) {
+        const why = sections.find(s => s.error)?.error || 'nenhum resultado';
+        throw new HttpError(502, `O TMDB não respondeu (${why}). Confira a TMDB_API_KEY e se o servidor acessa api.themoviedb.org.`);
+    }
+    return { sections: ok };
+}
+
+async function byTmdbId(type, id) {
+    try {
+        const d = await tmdb(`/${type}/${id}`, {}, 24 * 3600000);
+        return d?.id ? mapTmdbItem(d, type) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Finds any movie or series, not only what is in the library. Accepts a name, a TMDB id
+ * ("550", "tmdb:550", "tv 1399"), a TMDB link or an IMDb id / link ("tt0137523").
+ */
+export function parseQuery(q) {
+    const text = String(q || '').trim().slice(0, 200);
+    let m = text.match(/themoviedb\.org\/(movie|tv)\/(\d+)/i);
+    if (m) return { ids: [ [ m[1].toLowerCase(), Number(m[2]) ] ] };
+    m = text.match(/\b(tt\d{5,10})\b/i);
+    if (m) return { imdb: m[1].toLowerCase() };
+    m = text.match(/^(filme|movie|s[ée]rie|serie|tv|anime)\s*[:#/ ]\s*(\d{1,8})$/i);
+    if (m) return { ids: [ [ /^(filme|movie)$/i.test(m[1]) ? 'movie' : 'tv', Number(m[2]) ] ] };
+    m = text.match(/^(?:tmdb\s*[:#]?\s*)(\d{1,8})$/i);
+    if (m) return { ids: [ [ 'movie', Number(m[1]) ], [ 'tv', Number(m[1]) ] ] };
+    // a bare number may be an id or a title ("1917", "300")
+    m = text.match(/^\d{1,8}$/);
+    if (m) return { ids: [ [ 'movie', Number(text) ], [ 'tv', Number(text) ] ], text };
+    return { text };
+}
+
+async function search(user, q) {
+    const parsed = parseQuery(q);
+    const found = [];
+    if (parsed.ids) found.push(...(await Promise.all(parsed.ids.map(([ t, id ]) => byTmdbId(t, id)))).filter(Boolean));
+    if (parsed.imdb) {
+        const r = await tmdb(`/find/${parsed.imdb}`, { external_source: 'imdb_id' }, 24 * 3600000).catch(() => null);
+        for (const x of r?.movie_results || []) found.push(mapTmdbItem(x, 'movie'));
+        for (const x of r?.tv_results || []) found.push(mapTmdbItem(x, 'tv'));
+    }
+    if (parsed.text && parsed.text.length >= 2) {
+        const pages = await Promise.all([ 1, 2 ].map(page => tmdb('/search/multi', { query: parsed.text, include_adult: false, page }, 3600000).catch(err => {
+            if (page === 1) throw err;
+            return null;
+        })));
+        for (const body of pages) {
+            for (const r of body?.results || []) {
+                if (r.media_type !== 'movie' && r.media_type !== 'tv') continue;
+                found.push(mapTmdbItem(r));
+            }
+        }
+    }
+    const seen = new Set();
+    const unique = found.filter(it => {
+        const k = `${it.type}:${it.tmdbId}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    }).slice(0, 40);
+    // titles without a poster are usually obscure duplicates; keep them last
+    unique.sort((a, b) => Number(!a.poster) - Number(!b.poster));
+    return { query: String(q || '').trim(), items: await decorate(user, unique) };
+}
+
 /* ---------------- HTTP ---------------- */
 
 async function readBody(req) {
@@ -655,39 +1244,17 @@ const typeOf = s => {
 async function route(req, url) {
     const p = url.pathname.replace(/\/+$/, '') || '/';
     if (p === '/' || p === '/health') {
-        return { ok: true, name: 'freitas-bridge', configured: { tmdb: !!config.tmdbKey, radarr: !!config.radarr.url, prowlarr: !!config.prowlarr.url, qbittorrent: !!config.qbit.url } };
+        return { ok: true, name: 'freitas-bridge', configured: { tmdb: !!config.tmdbKey, radarr: !!config.radarr.url, sonarr: !!config.sonarr.url, prowlarr: !!config.prowlarr.url, qbittorrent: !!config.qbit.url } };
     }
     const user = await authenticate(req);
 
     if (p === '/api/me') {
-        return { name: user.name, canDownload: canDownload(user), services: { movies: !!config.radarr.url, series: false } };
+        return { name: user.name, canDownload: canDownload(user), services: { movies: !!config.radarr.url, series: !!config.sonarr.url } };
     }
 
-    if (p === '/api/discover') {
-        const lib = await libraryIndex(user).catch(() => new Map());
-        const queue = await movieQueue().catch(() => new Map());
-        const sections = await Promise.all(SECTIONS.map(async s => {
-            try {
-                const body = await tmdb(s.path, { ...(s.params || {}), ...(s.region ? { region: config.region } : {}) });
-                const items = (body?.results || []).filter(r => r.poster_path).slice(0, 20).map(r => {
-                    const it = mapTmdbItem(r, s.type);
-                    const jellyfinId = lib.get(`${it.type}:${it.tmdbId}`);
-                    const dl = it.type === 'movie' ? queue.get(String(it.tmdbId)) : undefined;
-                    return { ...it, state: jellyfinId ? 'library' : (dl ? 'downloading' : 'none'), jellyfinId, progress: dl?.progress };
-                });
-                return { id: s.id, title: s.title, items };
-            } catch (err) {
-                log('section', s.id, err.message);
-                return { id: s.id, title: s.title, items: [], error: err.message };
-            }
-        }));
-        const ok = sections.filter(s => s.items.length);
-        if (!ok.length) {
-            const why = sections.find(s => s.error)?.error || 'nenhum resultado';
-            throw new HttpError(502, `O TMDB não respondeu (${why}). Confira a TMDB_API_KEY e se o servidor acessa api.themoviedb.org.`);
-        }
-        return { sections: ok };
-    }
+    if (p === '/api/discover') return discover(user);
+
+    if (p === '/api/search') return search(user, url.searchParams.get('q') || '');
 
     let m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)$/);
     if (m) return titleDetails(user, typeOf(m[1]), intId(m[2]));
@@ -699,6 +1266,22 @@ async function route(req, url) {
     if (m) {
         if (!canDownload(user)) throw new HttpError(403, 'Seu usuário não pode baixar.');
         return movieReleases(intId(m[1]));
+    }
+
+    m = p.match(/^\/api\/releases\/tv\/(\d+)$/);
+    if (m) {
+        if (!canDownload(user)) throw new HttpError(403, 'Seu usuário não pode baixar.');
+        if (!config.sonarr.url) throw new HttpError(503, 'Configure o Sonarr na ponte (SONARR_URL e SONARR_API_KEY).');
+        const season = Number(url.searchParams.get('season'));
+        if (!Number.isInteger(season) || season < 0) throw new HttpError(400, 'temporada inválida');
+        return tvReleases(intId(m[1]), season);
+    }
+
+    if (p === '/api/follow' && req.method === 'POST') {
+        if (!canDownload(user)) throw new HttpError(403, 'Seu usuário não pode baixar.');
+        if (!config.sonarr.url) throw new HttpError(503, 'Configure o Sonarr na ponte (SONARR_URL e SONARR_API_KEY).');
+        const body = await readBody(req);
+        return setFollowing(intId(body.tmdbId), !!body.on);
     }
 
     if (p === '/api/grab' && req.method === 'POST') {
@@ -719,7 +1302,8 @@ export function createServer() {
         try {
             const body = await route(req, url);
             send(res, 200, body, origin);
-            const extra = body?.sections ? ` seções=${body.sections.length} títulos=${body.sections.reduce((n, x) => n + x.items.length, 0)}` : '';
+            let extra = body?.sections ? ` seções=${body.sections.length} títulos=${body.sections.reduce((n, x) => n + x.items.length, 0)}` : '';
+            if (body?.query !== undefined) extra = ` busca="${body.query}" resultados=${body.items.length}`;
             if (url.pathname !== '/health') log(req.method, url.pathname, 200, `${Date.now() - started}ms${extra}`);
         } catch (err) {
             const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
@@ -736,7 +1320,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     createServer().listen(config.port, () => {
         log(`freitas-bridge na porta ${config.port}`, JSON.stringify({
-            tmdb: !!config.tmdbKey, radarr: !!config.radarr.url, prowlarr: !!config.prowlarr.url, qbittorrent: !!config.qbit.url, allowDownload: config.allowDownload
+            tmdb: !!config.tmdbKey, radarr: !!config.radarr.url, sonarr: !!config.sonarr.url, prowlarr: !!config.prowlarr.url, qbittorrent: !!config.qbit.url, allowDownload: config.allowDownload
         }));
     });
 }

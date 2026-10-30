@@ -22,6 +22,8 @@ const PATHS: Record<string, React.ReactNode> = {
     download: <><path d='M12 4v11M7 10.5l5 5 5-5' /><path d='M5 20h14' /></>,
     arrowUp: <path d='M12 19V5M6 11l6-6 6 6' />,
     close: <path d='M6 6l12 12M18 6 6 18' />,
+    bell: <><path d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9' /><path d='M10.3 21a1.94 1.94 0 0 0 3.4 0' /></>,
+    bellOn: <><path d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9' /><path d='M10.3 21a1.94 1.94 0 0 0 3.4 0' /><path d='m9 10 2 2 4-4' /></>,
     trailer: <><rect x='2' y='4' width='20' height='16' rx='3' /><path d='m10 9 5 3-5 3z' fill='currentColor' /></>
 };
 

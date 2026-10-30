@@ -20,6 +20,7 @@ import {
     useToggleFavorite,
     useToggleMyList
 } from '../api';
+import { useBridgeMe, useCatalogState } from '../bridge';
 import { PosterCard, Row, itemUrl } from '../components/Cards';
 import { setActiveLibrary } from '../components/Header';
 import { MetaLine, TitleArt } from '../components/Hero';
@@ -119,6 +120,23 @@ const TrailerButton: FC<{ item: BaseItemDto }> = ({ item }) => {
         <button type='button' className='fp-btn-round' aria-label='Assistir trailer' title='Assistir trailer' onClick={onClick}>
             <Icon name='trailer' size={22} className='' />
         </button>
+    );
+};
+
+/** Series on disk: shortcut to download missing / new episodes (needs the bridge and Sonarr). */
+const SeriesDownloadButton: FC<{ item: BaseItemDto }> = ({ item }) => {
+    const tmdbId = Number(item.ProviderIds?.Tmdb) || undefined;
+    const { data: me } = useBridgeMe();
+    const enabled = item.Type === 'Series' && !!tmdbId && !!me?.canDownload && !!me?.services?.series;
+    const { data: st } = useCatalogState(enabled ? 'tv' : undefined, enabled ? tmdbId : undefined);
+    if (!enabled) return null;
+    const missing = st?.missing || 0;
+    const label = missing ? `Baixar episódios (faltam ${missing})` : 'Baixar episódios';
+    return (
+        <a className='fp-btn-round fp-btn-round--count' href={`#/catalogo?type=tv&tmdb=${tmdbId}`} aria-label={label} title={label}>
+            <Icon name='download' size={22} className='' />
+            {missing > 0 && <span className='fp-btn-round__count' aria-hidden='true'>{missing > 99 ? '99+' : missing}</span>}
+        </a>
     );
 };
 
@@ -357,6 +375,7 @@ const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem }
                     <ListButton item={item} />
                     <FavoriteButton item={item} />
                     <TrailerButton item={item} />
+                    <SeriesDownloadButton item={item} />
                 </div>
                 <TrackPickers sel={trackSel} />
             </div>

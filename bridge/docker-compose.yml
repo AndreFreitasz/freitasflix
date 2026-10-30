@@ -23,6 +23,9 @@ services:
       # Radarr: Settings > General > API Key
       RADARR_URL: "http://192.168.1.250:7878"
       RADARR_API_KEY: "TROQUE"
+      # Sonarr (séries): Settings > General > API Key
+      SONARR_URL: "http://192.168.1.250:8989"
+      SONARR_API_KEY: "TROQUE"
       # Prowlarr: Settings > General > API Key
       PROWLARR_URL: "http://192.168.1.250:9696"
       PROWLARR_API_KEY: "TROQUE"
@@ -31,6 +34,8 @@ services:
       QBIT_USER: "admin"
       QBIT_PASS: "TROQUE"
       QBIT_MOVIE_CATEGORY: "radarr"
+      # a mesma categoria que o Sonarr usa (Sonarr > Settings > Download Clients > qBittorrent > Category)
+      QBIT_TV_CATEGORY: "tv-sonarr"
       # Quem pode baixar: admins | all | nomes separados por vírgula (ex.: andre,maria)
       ALLOW_DOWNLOAD: "admins"
       TMDB_LANGUAGE: "pt-BR"
