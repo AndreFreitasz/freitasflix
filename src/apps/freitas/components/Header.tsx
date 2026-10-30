@@ -11,6 +11,7 @@ import { useApi } from 'hooks/useApi';
 import logo from 'assets/freitas/logo.png';
 
 import { useLibraries } from '../api';
+import { useBridgeMe } from '../bridge';
 import { Icon } from './Icons';
 
 /* A tiny store so pages (e.g. the title page) can tell the header which library is active. */
@@ -57,11 +58,13 @@ const Header: FC<HeaderProps> = ({ overlay = false, inline = false }) => {
     const location = useLocation();
     const [ searchParams ] = useSearchParams();
     const { data: libraries } = useLibraries();
+    const { isSuccess: hasBridge } = useBridgeMe();
     const pageLibraryId = useSyncExternalStore(subscribe, getActive);
 
     const tab = searchParams.get('tab');
     const isHome = location.pathname === '/home' && tab !== 'favoritos' && tab !== '1';
     const isFavorites = location.pathname === '/home' && (tab === 'favoritos' || tab === '1');
+    const isDiscover = location.pathname === '/descobrir' || location.pathname === '/catalogo';
     const currentLibraryId = searchParams.get('topParentId') || searchParams.get('parentId')
         || (location.pathname === '/titulo' ? pageLibraryId : undefined);
 
@@ -80,6 +83,11 @@ const Header: FC<HeaderProps> = ({ overlay = false, inline = false }) => {
                 <a className='fp-nav__item' href='#/home?tab=favoritos' aria-current={isFavorites ? 'page' : undefined}>
                     <Icon name='heart' /><span className='fp-nav__label'>Favoritos</span>
                 </a>
+                {hasBridge && (
+                    <a className='fp-nav__item' href='#/descobrir' aria-current={isDiscover ? 'page' : undefined}>
+                        <Icon name='compass' /><span className='fp-nav__label'>Descobrir</span>
+                    </a>
+                )}
                 {(libraries || []).map(view => (
                     <a
                         key={view.Id}

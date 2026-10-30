@@ -1,5 +1,8 @@
 import React, { type FC, type FormEvent, useCallback, useState } from 'react';
 
+import { useApi } from 'hooks/useApi';
+
+import { bridgeFetch, defaultBridgeUrl, getBridgeOverride, setBridgeOverride } from '../bridge';
 import FreitasPage from '../components/Layout';
 import {
     clearRatingsCache,
@@ -11,6 +14,65 @@ import {
 } from '../ratings';
 
 type Status = { kind: 'idle' } | { kind: 'testing' } | { kind: 'ok', text: string } | { kind: 'error', text: string };
+
+/** Address of freitas-bridge (catalog and downloads); empty = Jellyfin host on port 8099. */
+const BridgeSettings: FC = () => {
+    const { api } = useApi();
+    const [ url, setUrl ] = useState(getBridgeOverride());
+    const [ status, setStatus ] = useState<Status>({ kind: 'idle' });
+    const onChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setUrl(e.target.value), []);
+
+    const onSubmit = useCallback(async (e: FormEvent) => {
+        e.preventDefault();
+        if (!api) return;
+        const value = url.trim();
+        if (value && !/^https?:\/\/[^\s/]+/i.test(value)) {
+            setStatus({ kind: 'error', text: 'Use um endereço como http://192.168.1.250:8099' });
+            return;
+        }
+        setBridgeOverride(value);
+        setStatus({ kind: 'testing' });
+        try {
+            const me = await bridgeFetch<{ name: string, canDownload: boolean }>(api, '/api/me');
+            setStatus({
+                kind: 'ok',
+                text: `Ponte funcionando. ${me.canDownload ? 'Você pode baixar títulos.' : 'Seu usuário pode navegar, mas não baixar.'}`
+            });
+        } catch (err) {
+            setStatus({ kind: 'error', text: (err instanceof Error ? err.message : 'Erro') + ' Confira o endereço e se o app freitas-bridge está rodando.' });
+        }
+    }, [ api, url ]);
+
+    return (
+        <>
+            <h2 className='fp-settings__subtitle'>Descobrir e baixar</h2>
+            <p className='fp-settings__text'>
+                O catálogo e o botão <strong>Baixar</strong> usam a ponte do Freitas+ (app <strong>freitas-bridge</strong> no servidor).
+                Deixe em branco para usar o padrão: <code>{defaultBridgeUrl(api)}</code>.
+            </p>
+            <form className='fp-settings__form' onSubmit={onSubmit}>
+                <label className='fp-settings__label' htmlFor='fpBridgeUrl'>Endereço da ponte</label>
+                <input
+                    id='fpBridgeUrl'
+                    className='fp-settings__input'
+                    type='text'
+                    inputMode='url'
+                    autoComplete='off'
+                    spellCheck={false}
+                    placeholder={defaultBridgeUrl(api)}
+                    value={url}
+                    onChange={onChange}
+                />
+                <button type='submit' className='fp-btn-play' disabled={status.kind === 'testing'}>
+                    <span>{status.kind === 'testing' ? 'Testando…' : 'Salvar e testar'}</span>
+                </button>
+            </form>
+            {(status.kind === 'ok' || status.kind === 'error') && (
+                <p className={`fp-settings__status fp-settings__status--${status.kind}`} role='status'>{status.text}</p>
+            )}
+        </>
+    );
+};
 
 /** One-time setup of the free keys that bring IMDb, Rotten Tomatoes, Metacritic, Letterboxd and MyAnimeList. */
 const Notas: FC = () => {
@@ -85,6 +147,7 @@ const Notas: FC = () => {
                 {(status.kind === 'ok' || status.kind === 'error') && (
                     <p className={`fp-settings__status fp-settings__status--${status.kind}`} role='status'>{status.text}</p>
                 )}
+                <BridgeSettings />
             </main>
         </FreitasPage>
     );

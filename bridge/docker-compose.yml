@@ -1,0 +1,36 @@
+# freitas-bridge: catálogo (aba Descobrir) e downloads do Freitas+.
+# No CasaOS: App Store > "+" (Instalação personalizada) > Importar > cole este arquivo,
+# troque os valores marcados com TROQUE e instale.
+# Antes, coloque o freitas-bridge.mjs em /DATA/AppData/freitas-bridge/ (o freitas-update.sh mantém atualizado).
+name: freitas-bridge
+services:
+  freitas-bridge:
+    image: node:22-alpine
+    container_name: freitas-bridge
+    restart: unless-stopped
+    command: ["node", "/app/freitas-bridge.mjs"]
+    ports:
+      - "8099:8099"
+    volumes:
+      - /DATA/AppData/freitas-bridge:/app
+    environment:
+      PORT: "8099"
+      # Jellyfin (para conferir quem está logado no Freitas+)
+      JELLYFIN_URL: "http://192.168.1.250:8097"
+      # TMDB: chave da API (v3) ou o token de leitura (v4)
+      TMDB_API_KEY: "TROQUE"
+      # Radarr: Settings > General > API Key
+      RADARR_URL: "http://192.168.1.250:7878"
+      RADARR_API_KEY: "TROQUE"
+      # Prowlarr: Settings > General > API Key
+      PROWLARR_URL: "http://192.168.1.250:9696"
+      PROWLARR_API_KEY: "TROQUE"
+      # qBittorrent (WebUI), usado para opções que só o Prowlarr achou
+      QBIT_URL: "http://192.168.1.250:8080"
+      QBIT_USER: "admin"
+      QBIT_PASS: "TROQUE"
+      QBIT_MOVIE_CATEGORY: "radarr"
+      # Quem pode baixar: admins | all | nomes separados por vírgula (ex.: andre,maria)
+      ALLOW_DOWNLOAD: "admins"
+      TMDB_LANGUAGE: "pt-BR"
+      TMDB_REGION: "BR"

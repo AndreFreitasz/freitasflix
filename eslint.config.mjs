@@ -37,6 +37,7 @@ export default tseslint.config(
     // Global ignores
     {
         ignores: [
+            'bridge',
             'node_modules',
             'coverage',
             'dist',

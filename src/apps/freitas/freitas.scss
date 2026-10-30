@@ -2118,6 +2118,387 @@ body.fp-route .mainDrawerHandle {
     color: #fca5a5;
 }
 
+.fp-settings__subtitle {
+    margin: u(40) 0 u(10) !important;
+    padding-top: u(28);
+    border-top: 1px solid var(--fp-line);
+    font-size: u(24);
+    font-weight: 800;
+
+    & + .fp-settings__text code {
+        padding: u(1) u(6);
+        border-radius: u(6);
+        background: rgba(255, 255, 255, 0.08);
+        font-size: u(14);
+    }
+}
+
+/* ---------- Catalog (Descobrir / catálogo) ---------- */
+
+.fp-badge--lib {
+    background: rgba(22, 101, 52, 0.88);
+
+    svg {
+        width: u(13);
+        height: u(13);
+        margin-right: u(5);
+    }
+}
+
+.fp-badge--dl {
+    background: rgba(124, 58, 237, 0.9);
+
+    svg {
+        width: u(13);
+        height: u(13);
+        margin-right: u(5);
+    }
+}
+
+.fp-bridge-help {
+    max-width: u(720);
+
+    .fp-bridge-help__more {
+        margin-top: u(8);
+    }
+
+    strong {
+        color: var(--fp-ink);
+    }
+
+    a {
+        color: #c4b5fd;
+        text-decoration: underline;
+    }
+}
+
+.fp-dlstate {
+    max-width: u(460);
+    margin-top: u(14);
+    font-size: u(15);
+    color: var(--fp-ink-2);
+}
+
+.fp-dlstate__row {
+    display: flex;
+    align-items: center;
+    margin-bottom: u(8);
+
+    svg {
+        flex: none;
+        width: u(18);
+        height: u(18);
+        margin-right: u(8);
+        color: #c4b5fd;
+    }
+}
+
+.fp-dlstate__eta {
+    margin-left: auto;
+    padding-left: u(12);
+    color: var(--fp-muted);
+    font-size: u(13);
+}
+
+.fp-progress--inline {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    height: u(5);
+}
+
+.fp-btn-play--sm {
+    height: u(42);
+    min-width: 0;
+    padding: 0 u(20);
+    font-size: u(15);
+
+    svg {
+        width: u(17);
+        height: u(17);
+        margin-right: u(8);
+    }
+}
+
+.fp-btn-play:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.fp-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    height: u(40);
+    padding: 0 u(16);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: transparent;
+    color: var(--fp-ink-2);
+    font: inherit;
+    font-size: u(14);
+    font-weight: 600;
+    cursor: pointer;
+
+    svg {
+        width: u(16);
+        height: u(16);
+        margin-right: u(6);
+    }
+
+    &:hover,
+    &:focus {
+        background: var(--fp-hover);
+        color: #fff;
+    }
+}
+
+.fp-releases {
+    margin-bottom: u(32);
+}
+
+.fp-releases__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: u(14);
+}
+
+.fp-releases__title {
+    font-size: u(22);
+    font-weight: 800;
+}
+
+.fp-releases__loading {
+    display: flex;
+    align-items: center;
+    padding: u(20) 0;
+    font-size: u(16);
+    color: var(--fp-ink-2);
+
+    small {
+        font-size: u(13);
+        color: var(--fp-muted);
+    }
+}
+
+.fp-spinner {
+    flex: none;
+    width: u(26);
+    height: u(26);
+    margin-right: u(14);
+    border-radius: 50%;
+    border: u(3) solid rgba(255, 255, 255, 0.16);
+    border-top-color: var(--fp-purple);
+    animation: fp-spin 0.9s linear infinite;
+}
+
+@keyframes fp-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.fp-releases__error {
+    padding: u(12) 0;
+    color: #fca5a5;
+}
+
+.fp-releases__error-text {
+    margin-bottom: u(10);
+}
+
+.fp-releases__filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.fp-chipgroup {
+    display: inline-flex;
+    flex-wrap: wrap;
+    margin: 0 u(18) u(10) 0;
+}
+
+.fp-chipbtn {
+    height: u(34);
+    margin: 0 u(6) u(6) 0;
+    padding: 0 u(14);
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fp-ink-2);
+    font: inherit;
+    font-size: u(13);
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover,
+    &:focus {
+        background: rgba(255, 255, 255, 0.14);
+    }
+
+    &[aria-pressed="true"] {
+        background: #fff;
+        border-color: #fff;
+        color: #111;
+    }
+}
+
+.fp-releases__count,
+.fp-releases__empty {
+    margin: u(4) 0 u(10);
+    font-size: u(13);
+    color: var(--fp-muted);
+}
+
+.fp-releases__empty {
+    font-size: u(15);
+    padding: u(16) 0;
+}
+
+.fp-releases__warn {
+    margin: 0 0 u(10);
+    font-size: u(13);
+    color: #fcd34d;
+}
+
+.fp-rel-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--fp-line);
+}
+
+.fp-rel {
+    border-bottom: 1px solid var(--fp-line);
+
+    &.is-selected {
+        background: rgba(139, 92, 246, 0.1);
+    }
+}
+
+.fp-rel__main {
+    display: block;
+    width: 100%;
+    padding: u(12) u(10);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus {
+        background: rgba(255, 255, 255, 0.06);
+    }
+}
+
+.fp-rel__tags {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: u(4);
+}
+
+.fp-tag {
+    display: inline-flex;
+    align-items: center;
+    height: u(20);
+    margin: 0 u(5) u(4) 0;
+    padding: 0 u(7);
+    border-radius: u(5);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--fp-ink-2);
+    font-size: u(11);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.fp-tag--res {
+    background: #fff;
+    color: #111;
+}
+
+.fp-tag--pt {
+    background: rgba(22, 163, 74, 0.25);
+    color: #86efac;
+}
+
+.fp-tag--fl {
+    background: rgba(234, 179, 8, 0.22);
+    color: #fde047;
+}
+
+.fp-tag--up {
+    background: rgba(14, 165, 233, 0.22);
+    color: #7dd3fc;
+}
+
+.fp-tag--warn {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+.fp-rel__title {
+    display: block;
+    font-size: u(14);
+    line-height: 1.4;
+    color: var(--fp-ink);
+    word-break: break-word;
+
+    .is-rejected & {
+        color: var(--fp-muted);
+    }
+}
+
+.fp-rel__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: u(4);
+    font-size: u(13);
+    color: var(--fp-muted);
+
+    > span {
+        margin-right: u(14);
+    }
+}
+
+.fp-rel__tracker {
+    font-weight: 700;
+    color: var(--fp-ink-3);
+}
+
+.fp-rel__seed {
+    display: inline-flex;
+    align-items: center;
+    color: #86efac;
+
+    svg {
+        width: u(13);
+        height: u(13);
+        margin-right: u(2);
+    }
+
+    &.is-dead {
+        color: #fca5a5;
+    }
+}
+
+.fp-rel__confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0 u(10) u(12);
+    font-size: u(14);
+    color: var(--fp-ink-2);
+
+    > * {
+        margin: u(4) u(10) 0 0;
+    }
+}
+
 /* ---------- TV performance mode ----------
  * TV chips (Tizen, webOS, Fire TV) have weak GPUs: live blur, masks, filters and
  * large soft shadows are re-rendered on every focus move and scroll step, which is
@@ -2203,5 +2584,15 @@ html.layout-tv {
 
     .fp-scroller {
         scroll-behavior: auto;
+    }
+
+    .fp-rel__main,
+    .fp-chipbtn,
+    .fp-btn-ghost {
+        transition: none;
+    }
+
+    .fp-spinner {
+        animation-duration: 1.4s;
     }
 }

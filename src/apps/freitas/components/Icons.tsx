@@ -18,6 +18,10 @@ const PATHS: Record<string, React.ReactNode> = {
     chevronRight: <path d='m9 6 6 6-6 6' />,
     chevronDown: <path d='m6 9 6 6 6-6' />,
     chevronLeft: <path d='m15 6-6 6 6 6' />,
+    compass: <><circle cx='12' cy='12' r='9' /><path d='m15.5 8.5-2 5-5 2 2-5z' /></>,
+    download: <><path d='M12 4v11M7 10.5l5 5 5-5' /><path d='M5 20h14' /></>,
+    arrowUp: <path d='M12 19V5M6 11l6-6 6 6' />,
+    close: <path d='M6 6l12 12M18 6 6 18' />,
     trailer: <><rect x='2' y='4' width='20' height='16' rx='3' /><path d='m10 9 5 3-5 3z' fill='currentColor' /></>
 };
 

@@ -46,7 +46,7 @@ type TabId = 'episodes' | 'extras' | 'cast';
 
 /* ---------- small pieces ---------- */
 
-const InfoBlock: FC<{ label: string, value?: string }> = ({ label, value }) => {
+export const InfoBlock: FC<{ label: string, value?: string }> = ({ label, value }) => {
     if (!value) return null;
     return (
         <div className='fp-info__block'>
@@ -122,7 +122,7 @@ const TrailerButton: FC<{ item: BaseItemDto }> = ({ item }) => {
     );
 };
 
-const BackButton: FC = () => {
+export const BackButton: FC = () => {
     const onClick = useCallback(() => {
         if (window.history.length > 1) {
             appRouter.back().catch(() => {

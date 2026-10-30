@@ -172,6 +172,12 @@ jobs:
       - name: Download builds
         uses: actions/download-artifact@v4
 
+      - name: Checkout (bridge)
+        uses: actions/checkout@v4
+        with:
+          path: src
+          sparse-checkout: bridge
+
       - name: Publish release "freitas-latest"
         env:
           GH_TOKEN: ${{ github.token }}
@@ -179,6 +185,8 @@ jobs:
         run: |
           FILES="web/freitas-web.tar.gz"
           [ -f tizen/Freitas-Samsung.wgt ] && FILES="$FILES tizen/Freitas-Samsung.wgt"
+          cp src/bridge/freitas-bridge.mjs src/bridge/docker-compose.yml .
+          FILES="$FILES freitas-bridge.mjs docker-compose.yml"
           gh release delete freitas-latest --yes --cleanup-tag || true
           gh release create freitas-latest $FILES \
             --target "${{ github.sha }}" \
@@ -186,5 +194,6 @@ jobs:
             --notes "Build automático do commit ${{ github.sha }}.
 
           - freitas-web.tar.gz: interface do servidor (rode freitas-update.sh no servidor).
-          - Freitas-Samsung.wgt: app para TV Samsung (instale com o Apps2Samsung no PC)." \
+          - Freitas-Samsung.wgt: app para TV Samsung (instale com o Apps2Samsung no PC).
+          - freitas-bridge.mjs + docker-compose.yml: ponte do catálogo e dos downloads (aba Descobrir)." \
             --prerelease

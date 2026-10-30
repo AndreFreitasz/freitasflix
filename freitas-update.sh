@@ -21,4 +21,13 @@ if [ -n "$CONTAINER" ]; then
     echo "Reiniciando $CONTAINER..."
     docker restart "$CONTAINER" >/dev/null
 fi
+# Ponte do catálogo (aba Descobrir), quando instalada
+BRIDGE_DIR="${BRIDGE_DIR:-/DATA/AppData/freitas-bridge}"
+if [ -d "$BRIDGE_DIR" ]; then
+    echo "Atualizando a ponte em $BRIDGE_DIR..."
+    curl -fL "https://github.com/AndreFreitasz/freitasflix/releases/download/freitas-latest/freitas-bridge.mjs" -o "$BRIDGE_DIR/freitas-bridge.mjs"
+    BRIDGE="$(docker ps --format '{{.Names}}' | grep -i freitas-bridge | head -n1)"
+    [ -n "$BRIDGE" ] && docker restart "$BRIDGE" >/dev/null
+fi
+
 echo "Pronto! Atualize a página do Jellyfin (Ctrl+F5)."
