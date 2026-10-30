@@ -37,6 +37,8 @@ const Descobrir: FC = () => {
 
                 {isError && <BridgeHelp message={(error as Error)?.message} />}
 
+                {data && !data.sections.length && <BridgeHelp message='O catálogo veio vazio.' />}
+
                 {data?.sections.map(section => (
                     <Row key={section.id} title={section.title}>
                         {section.items.map(item => <CatalogCard key={`${item.type}-${item.tmdbId}`} item={item} />)}

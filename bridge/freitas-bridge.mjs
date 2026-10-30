@@ -89,6 +89,8 @@ async function fetchJson(url, init = {}, timeoutMs = 20000) {
         return body;
     } catch (err) {
         if (err.name === 'AbortError') throw new HttpError(504, 'tempo esgotado');
+        // network failures come as "fetch failed"; the cause says why (ENOTFOUND, ECONNREFUSED…)
+        if (!(err instanceof HttpError) && err.cause) throw new HttpError(502, `sem conexão: ${err.cause.code || err.cause.message} em ${new URL(url).host}`);
         throw err;
     } finally {
         clearTimeout(t);
@@ -669,7 +671,12 @@ async function route(req, url) {
                 return { id: s.id, title: s.title, items: [], error: err.message };
             }
         }));
-        return { sections: sections.filter(s => s.items.length) };
+        const ok = sections.filter(s => s.items.length);
+        if (!ok.length) {
+            const why = sections.find(s => s.error)?.error || 'nenhum resultado';
+            throw new HttpError(502, `O TMDB não respondeu (${why}). Confira a TMDB_API_KEY e se o servidor acessa api.themoviedb.org.`);
+        }
+        return { sections: ok };
     }
 
     let m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)$/);
