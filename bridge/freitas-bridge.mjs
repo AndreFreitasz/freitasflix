@@ -707,12 +707,15 @@ export function createServer() {
         const origin = req.headers.origin;
         if (req.method === 'OPTIONS') return send(res, 204, {}, origin);
         const url = new URL(req.url, 'http://bridge');
+        const started = Date.now();
         try {
             const body = await route(req, url);
             send(res, 200, body, origin);
+            const extra = body?.sections ? ` seções=${body.sections.length} títulos=${body.sections.reduce((n, x) => n + x.items.length, 0)}` : '';
+            if (url.pathname !== '/health') log(req.method, url.pathname, 200, `${Date.now() - started}ms${extra}`);
         } catch (err) {
             const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
-            if (status >= 500) log('error', req.method, url.pathname, err.message);
+            log(req.method, url.pathname, status, `${Date.now() - started}ms`, err.message);
             send(res, status, { error: err.message || 'erro' }, origin);
         }
     });
