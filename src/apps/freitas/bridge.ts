@@ -45,11 +45,16 @@ export function setBridgeOverride(url: string) {
 
 export const bridgeUrl = (api?: Api) => stripSlashes(getBridgeOverride() || defaultBridgeUrl(api));
 
+/*
+ * The HTTP status is kept as `code`, not `status`: Jellyfin's global query handler
+ * treats any error with status 401 as an expired Jellyfin session and silently blanks
+ * the data, which would hide the bridge's own messages.
+ */
 export class BridgeError extends Error {
-    status: number;
-    constructor(status: number, message: string) {
+    code: number;
+    constructor(code: number, message: string) {
         super(message);
-        this.status = status;
+        this.code = code;
     }
 }
 

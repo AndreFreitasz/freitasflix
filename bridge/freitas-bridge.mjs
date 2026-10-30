@@ -111,6 +111,11 @@ function tokenOf(req) {
     return m ? m[1] : '';
 }
 
+// Jellyfin 10.11+ ignores the legacy X-Emby-Token header by default; use the current scheme
+const jellyfinAuth = token => ({
+    Authorization: `MediaBrowser Client="Freitas+ Bridge", Device="freitas-bridge", DeviceId="freitas-bridge", Version="1.0", Token="${token}"`
+});
+
 const users = new Map();
 async function authenticate(req) {
     const token = tokenOf(req);
@@ -119,7 +124,7 @@ async function authenticate(req) {
     if (hit && hit.exp > Date.now()) return hit.user;
     let me;
     try {
-        me = await fetchJson(`${config.jellyfin}/Users/Me`, { headers: { 'X-Emby-Token': token } }, 10000);
+        me = await fetchJson(`${config.jellyfin}/Users/Me`, { headers: jellyfinAuth(token) }, 10000);
     } catch (err) {
         if (err.status === 401 || err.status === 403) throw new HttpError(401, 'Sessão do Jellyfin inválida.');
         throw new HttpError(502, 'Não consegui falar com o Jellyfin: ' + err.message);
@@ -194,7 +199,7 @@ async function libraryIndex(user) {
         url.searchParams.set('Fields', 'ProviderIds');
         url.searchParams.set('EnableImages', 'false');
         url.searchParams.set('EnableUserData', 'false');
-        const body = await fetchJson(url.toString(), { headers: { 'X-Emby-Token': user.token } }, 20000);
+        const body = await fetchJson(url.toString(), { headers: jellyfinAuth(user.token) }, 20000);
         const map = new Map();
         for (const it of body?.Items || []) {
             const ids = it.ProviderIds || {};
