@@ -92,10 +92,16 @@ export function useTrackSelection(target?: BaseItemDto | null) {
         setSubtitle(undefined);
     }, []);
 
-    const tracks: PlayTracks | undefined = source ? {
+    // Only what the user actually changed is sent: with nothing chosen, playback starts
+    // exactly like the stock Jellyfin apps (the server picks source, audio and subtitles,
+    // e.g. preferring direct play). Forcing the defaults made the server transcode in
+    // some cases (4K + image subtitles / lossless audio on TVs).
+    const chosen = sourceId != null || audio != null || subtitle != null;
+    // track numbers belong to a version, so the version goes along with any choice
+    const tracks: PlayTracks | undefined = source && chosen ? {
         mediaSourceId: source.Id || undefined,
-        audioStreamIndex: audioIndex,
-        subtitleStreamIndex: subtitleIndex
+        ...(audio != null ? { audioStreamIndex: audio } : {}),
+        ...(subtitle != null ? { subtitleStreamIndex: subtitle } : {})
     } : undefined;
 
     return {
