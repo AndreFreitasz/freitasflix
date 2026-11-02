@@ -10,6 +10,11 @@ function isTv(userAgent) {
         return true;
     }
 
+    // Amazon Fire TV devices ("AFTMM", "AFTKA"...), e.g. the Freitas+ Fire TV app
+    if (/; aft[a-z0-9]{1,6}(?: build|[;)])/.test(userAgent)) {
+        return true;
+    }
+
     if (userAgent.includes('viera')) {
         return true;
     }

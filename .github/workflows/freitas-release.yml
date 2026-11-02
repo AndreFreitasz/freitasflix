@@ -163,10 +163,84 @@ jobs:
           path: Freitas-Samsung.wgt
           retention-days: 3
 
+  firetv:
+    name: App Fire TV (Android)
+    runs-on: ubuntu-latest
+    env:
+      JELLYFIN_ANDROID_VER: v2.7.3
+    steps:
+      - name: Checkout Freitas+
+        uses: actions/checkout@v4
+        with:
+          path: repo
+          sparse-checkout: android
+
+      - name: Checkout jellyfin-android
+        run: git clone -q --depth 1 --branch "$JELLYFIN_ANDROID_VER" https://github.com/jellyfin/jellyfin-android app
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Same signing key on every build so updates install over the old app.
+      # Preferably a repository secret; otherwise one kept in the Actions cache.
+      - name: Signing key (cache)
+        uses: actions/cache@v4
+        with:
+          path: keystore
+          key: freitas-firetv-keystore-v1
+
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.FIRETV_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.FIRETV_KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p keystore
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > keystore/freitas.jks
+            printf '%s' "$KS_PASS" > keystore/pass
+          elif [ ! -f keystore/freitas.jks ]; then
+            echo "::warning::No FIRETV_KEYSTORE secret: creating a signing key kept in the Actions cache"
+            openssl rand -base64 24 | tr -d '\n' > keystore/pass
+            keytool -genkeypair -keystore keystore/freitas.jks -storetype PKCS12 -alias freitas \
+              -keyalg RSA -keysize 2048 -validity 36500 \
+              -storepass "$(cat keystore/pass)" -keypass "$(cat keystore/pass)" \
+              -dname "CN=Freitas+, O=Freitas, C=BR"
+          fi
+
+      - name: Brand as Freitas+
+        run: python3 repo/android/brand.py app repo
+
+      - name: Build
+        working-directory: app
+        run: |
+          PASS="$(cat ../keystore/pass)"
+          ./gradlew --no-daemon assembleLibreRelease \
+            -Pjellyfin.version="${JELLYFIN_ANDROID_VER#v}" \
+            -Pkeystore.file="$GITHUB_WORKSPACE/keystore/freitas.jks" \
+            -Pkeystore.password="$PASS" \
+            -Psigning.key.alias=freitas \
+            -Psigning.key.password="$PASS"
+          APK=$(ls app/build/outputs/apk/libre/release/*.apk | head -1)
+          [ -n "$APK" ] || { echo "::error::APK not produced"; exit 1; }
+          cp "$APK" "$GITHUB_WORKSPACE/Freitas-FireTV.apk"
+          ls -la "$GITHUB_WORKSPACE/Freitas-FireTV.apk"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: firetv
+          path: Freitas-FireTV.apk
+
   release:
     name: Publicar release
     runs-on: ubuntu-latest
-    needs: [ web, tizen ]
+    needs: [ web, tizen, firetv ]
     if: always() && needs.web.result == 'success'
     steps:
       - name: Download builds
@@ -185,6 +259,7 @@ jobs:
         run: |
           FILES="web/freitas-web.tar.gz"
           [ -f tizen/Freitas-Samsung.wgt ] && FILES="$FILES tizen/Freitas-Samsung.wgt"
+          [ -f firetv/Freitas-FireTV.apk ] && FILES="$FILES firetv/Freitas-FireTV.apk"
           cp src/bridge/freitas-bridge.mjs src/bridge/docker-compose.yml .
           FILES="$FILES freitas-bridge.mjs docker-compose.yml"
           gh release delete freitas-latest --yes --cleanup-tag || true
@@ -195,5 +270,6 @@ jobs:
 
           - freitas-web.tar.gz: interface do servidor (rode freitas-update.sh no servidor).
           - Freitas-Samsung.wgt: app para TV Samsung (instale com o Apps2Samsung no PC).
+          - Freitas-FireTV.apk: app para Fire TV / Android TV (instale pelo Downloader).
           - freitas-bridge.mjs + docker-compose.yml: ponte do catálogo e dos downloads (aba Descobrir)." \
             --prerelease
