@@ -210,7 +210,7 @@ jobs:
             keytool -genkeypair -keystore keystore/freitas.jks -storetype PKCS12 -alias freitas \
               -keyalg RSA -keysize 2048 -validity 36500 \
               -storepass "$(cat keystore/pass)" -keypass "$(cat keystore/pass)" \
-              -dname "CN=Freitas+, O=Freitas, C=BR"
+              -dname "CN=Freitas Plus, O=Freitas, C=BR"
           fi
 
       - name: Brand as Freitas+
