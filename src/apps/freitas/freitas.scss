@@ -2736,6 +2736,25 @@ body.fp-route .mainDrawerHandle {
     }
 }
 
+/* ---------- Subtitles on phones ----------
+ * The player sizes subtitles for desktop screens (170% x 1.36em) and lifts them
+ * by a margin in the same em unit, so on a phone in landscape they became huge and
+ * sat in the middle of the picture. Smaller text (and margin with it) and wider
+ * lines so they wrap less.
+ */
+
+/* html body: the player's stylesheet loads after this one */
+@media (max-height: 500px), (max-width: 600px) {
+    html body .videoSubtitles {
+        font-size: 100%;
+    }
+
+    html body .videoSubtitlesInner,
+    html body .videoSecondarySubtitlesInner {
+        max-width: 88%;
+    }
+}
+
 /* ---------- TV performance mode ----------
  * TV chips (Tizen, webOS, Fire TV) have weak GPUs: live blur, masks, filters and
  * large soft shadows are re-rendered on every focus move and scroll step, which is
