@@ -382,20 +382,29 @@ const sonarr = (path, init, t) => arr(config.sonarr, path, init, t);
 const prowlarr = (path, init, t) => arr(config.prowlarr, path, init, t);
 
 let qbitCookie = '';
+async function qbitFetch(url, init) {
+    try {
+        return await fetch(url, { ...init, signal: AbortSignal.timeout(20000) });
+    } catch (err) {
+        const why = err.cause?.code || err.name || err.message;
+        throw new HttpError(502, `Não consegui falar com o qBittorrent em ${config.qbit.url} (${why}). Confira QBIT_URL na ponte (a porta do WebUI).`);
+    }
+}
+
 async function qbit(path, form, retry = true) {
     if (!config.qbit.url) throw new HttpError(503, 'Configure QBIT_URL na ponte.');
     if (!qbitCookie) {
-        const res = await fetch(`${config.qbit.url}/api/v2/auth/login`, {
+        const res = await qbitFetch(`${config.qbit.url}/api/v2/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: config.qbit.url },
             body: new URLSearchParams({ username: config.qbit.user, password: config.qbit.pass })
         });
         const text = await res.text();
         const sid = (res.headers.get('set-cookie') || '').match(/SID=[^;]+/);
-        if (!res.ok || !sid || text.trim() !== 'Ok.') throw new HttpError(502, 'Login no qBittorrent falhou');
+        if (!res.ok || !sid || text.trim() !== 'Ok.') throw new HttpError(502, 'Login no qBittorrent falhou: confira QBIT_USER e QBIT_PASS na ponte.');
         qbitCookie = sid[0];
     }
-    const res = await fetch(`${config.qbit.url}/api/v2/${path}`, {
+    const res = await qbitFetch(`${config.qbit.url}/api/v2/${path}`, {
         method: form ? 'POST' : 'GET',
         headers: { Cookie: qbitCookie, Referer: config.qbit.url, ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) },
         body: form ? new URLSearchParams(form) : undefined
@@ -1013,7 +1022,7 @@ async function grabRelease(key, tmdbId) {
             await sonarr('/api/v3/release', { method: 'POST', body: JSON.stringify({ guid: r.guid, indexerId: r.indexerId }) }, 60000);
         } catch (err) {
             if (err.status === 404) throw new HttpError(410, 'As opções expiraram no Sonarr. Busque de novo.');
-            throw err;
+            throw new HttpError(502, 'O Sonarr não conseguiu enviar para o qBittorrent: ' + err.message);
         }
     } else if (r.origin === 'radarr') {
         try {
@@ -1023,7 +1032,7 @@ async function grabRelease(key, tmdbId) {
             }, 60000);
         } catch (err) {
             if (err.status === 404) throw new HttpError(410, 'As opções expiraram no Radarr. Busque de novo.');
-            throw err;
+            throw new HttpError(502, 'O Radarr não conseguiu enviar para o qBittorrent: ' + err.message);
         }
     } else {
         const source = r.downloadUrl || r.magnetUrl;
