@@ -174,6 +174,29 @@ export function useLibraryItems(parentId: string | undefined, sort: 'random' | '
     });
 }
 
+/** Every title of a library in one request (genre rows and the Top 10 are built from it). */
+export function useLibraryAll(parentId: string | undefined) {
+    const { api, userId, enabled } = useCtx();
+    return useQuery({
+        queryKey: [ 'freitas', userId, 'library-all', parentId ],
+        queryFn: async ({ signal }) => {
+            const res = await getLibraryApi(api!).getItems({
+                userId,
+                parentId,
+                includeItemTypes: VIDEO_TYPES,
+                recursive: true,
+                sortBy: [ ItemSortBy.Random ],
+                fields: CARD_FIELDS,
+                enableUserData: true,
+                limit: 1000
+            }, { signal });
+            return res.data.Items || [];
+        },
+        enabled: enabled && !!parentId,
+        staleTime: 10 * 60 * 1000
+    });
+}
+
 export function useFavoriteItems() {
     const { api, userId, enabled } = useCtx();
     return useQuery({

@@ -39,6 +39,8 @@ function libraryIcon(view: BaseItemDto) {
 }
 
 function libraryUrl(view: BaseItemDto) {
+    // movies / series / anime open the Freitas+ tab; anything else (music…) the stock page
+    if (view.CollectionType === 'movies' || view.CollectionType === 'tvshows') return `#/biblioteca?id=${view.Id}`;
     try {
         return appRouter.getRouteUrl(view, { context: view.CollectionType }) as string;
     } catch {
@@ -66,6 +68,7 @@ const Header: FC<HeaderProps> = ({ overlay = false, inline = false }) => {
     const isFavorites = location.pathname === '/home' && (tab === 'favoritos' || tab === '1');
     const isDiscover = location.pathname === '/descobrir' || location.pathname === '/catalogo';
     const currentLibraryId = searchParams.get('topParentId') || searchParams.get('parentId')
+        || (location.pathname === '/biblioteca' ? searchParams.get('id') : undefined)
         || (location.pathname === '/titulo' ? pageLibraryId : undefined);
 
     if (!user) return null;

@@ -27,6 +27,7 @@ function libraryRowTitle(view: BaseItemDto) {
 }
 
 function libraryHref(view: BaseItemDto) {
+    if (view.CollectionType === 'movies' || view.CollectionType === 'tvshows') return `#/biblioteca?id=${view.Id}`;
     try {
         return appRouter.getRouteUrl(view, { context: view.CollectionType }) as string;
     } catch {

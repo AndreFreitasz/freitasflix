@@ -133,17 +133,22 @@ export const WideCard: FC<{ item: BaseItemDto }> = ({ item }) => {
 
 interface RowProps {
     title: string
+    /** small logo before the title (streaming service) */
+    logo?: string
     seeAllHref?: string
     variant?: 'poster' | 'wide' | 'rank'
     children: ReactNode
 }
 
-export const Row: FC<RowProps> = ({ title, seeAllHref, variant = 'poster', children }) => {
+export const Row: FC<RowProps> = ({ title, logo, seeAllHref, variant = 'poster', children }) => {
     const id = 'fp-row-' + title.replace(/\W+/g, '-').toLowerCase();
     return (
         <section className='fp-row' aria-labelledby={id}>
             <div className='fp-row__head fp-pad'>
-                <h2 id={id} className='fp-row__title'>{title}</h2>
+                <h2 id={id} className={logo ? 'fp-row__title fp-row__title--logo' : 'fp-row__title'}>
+                    {logo && <img className='fp-row__logo' src={logo} alt='' aria-hidden='true' loading='lazy' />}
+                    {title}
+                </h2>
                 {seeAllHref && (
                     <a className='fp-seeall' href={seeAllHref}>
                         Ver tudo <Icon name='chevronRight' size={16} />

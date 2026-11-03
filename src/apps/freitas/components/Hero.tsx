@@ -195,6 +195,16 @@ const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
 
     const count = items.length;
     const { index, setIndex, paused, setPaused, go } = useRotation(count);
+
+    // Remotes need a starting point: put the focus on "Assistir" when the page opens
+    // (only if nothing else has it yet).
+    const hasItems = count > 0;
+    useEffect(() => {
+        if (!layoutManager.tv || !hasItems) return;
+        const active = document.activeElement;
+        if (active && active !== document.body && active.closest('.fp-root')) return;
+        sectionRef.current?.querySelector<HTMLElement>('.fp-btn-play')?.focus();
+    }, [ hasItems ]);
     const item = items[index];
     const width = backdropWidth();
 

@@ -2736,6 +2736,38 @@ body.fp-route .mainDrawerHandle {
     }
 }
 
+/* ---------- Library tabs (Filmes / Séries / Animes) ---------- */
+
+.fp-libbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: u(8);
+}
+
+.fp-libbar__title {
+    margin-right: u(16);
+    font-size: u(28);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+.fp-row__title--logo {
+    display: flex;
+    align-items: center;
+}
+
+.fp-row__logo {
+    display: inline-block;
+    flex: none;
+    width: u(26);
+    height: u(26);
+    margin-right: u(10);
+    border-radius: u(6);
+    object-fit: cover;
+}
+
 /* ---------- Subtitles on phones ----------
  * The player sizes subtitles for desktop screens (170% x 1.36em) and lifts them
  * by a margin in the same em unit, so on a phone in landscape they became huge and

@@ -7,6 +7,7 @@ export const ASYNC_USER_ROUTES: AsyncRoute[] = [
     { path: 'notas', type: AppType.Freitas },
     { path: 'descobrir', type: AppType.Freitas },
     { path: 'catalogo', type: AppType.Freitas },
+    { path: 'biblioteca', type: AppType.Freitas },
     { path: 'mypreferencesmenu', page: 'user/settings' },
     { path: 'quickconnect', page: 'quickConnect' },
     { path: 'search', page: 'search' },

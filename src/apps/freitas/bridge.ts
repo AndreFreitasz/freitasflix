@@ -204,6 +204,17 @@ export interface ReleasesResponse {
     errors: string[]
 }
 
+export type StreamingKind = 'movie' | 'tv' | 'anime';
+
+export interface StreamingProvider {
+    key: string
+    id: number
+    name: string
+    logo: string
+    popular: CatalogItem[]
+    recent: CatalogItem[]
+}
+
 /* ---------- hooks ---------- */
 
 function useBridgeCtx() {
@@ -299,6 +310,18 @@ export function useFollow(tmdbId?: number) {
         onSuccess: () => {
             void qc.invalidateQueries({ queryKey: [ 'freitas', 'bridge', userId, 'state', 'tv', tmdbId ] });
         }
+    });
+}
+
+/** Popular and recent titles of each streaming service, for a library tab. */
+export function useStreaming(kind: StreamingKind | undefined) {
+    const { api, userId, enabled } = useBridgeCtx();
+    return useQuery({
+        queryKey: [ 'freitas', 'bridge', userId, 'streaming', kind ],
+        queryFn: ({ signal }) => bridgeFetch<{ kind: StreamingKind, providers: StreamingProvider[] }>(api!, `/api/streaming/${kind}`, {}, signal),
+        enabled: enabled && !!kind,
+        retry: 1,
+        staleTime: 30 * 60 * 1000
     });
 }
 

@@ -262,16 +262,98 @@ const recentWindow = () => ({ 'release_date.gte': isoDay(Date.now() - 120 * DAY)
  *       'cinema' keeps movies only in theaters, 'upcoming' those not released yet.
  */
 const SECTIONS = [
-    { id: 'trending-movies', title: 'Filmes em alta', type: 'movie', path: '/trending/movie/week', pages: 2, only: 'digital' },
     { id: 'new-digital', title: 'Chegaram para baixar', type: 'movie', path: '/discover/movie', pages: 2, only: 'digital', params: () => ({ sort_by: 'popularity.desc', with_release_type: '4|5', 'vote_count.gte': 15, ...recentWindow() }) },
-    { id: 'trending-tv', title: 'Séries em alta', type: 'tv', path: '/trending/tv/week' },
-    { id: 'anime', title: 'Animes em alta', type: 'tv', path: '/discover/tv', params: () => ({ with_genres: 16, with_original_language: 'ja', sort_by: 'popularity.desc' }) },
-    { id: 'popular-movies', title: 'Filmes populares', type: 'movie', path: '/movie/popular', pages: 2, only: 'digital' },
     { id: 'now-playing', title: 'No cinema', type: 'movie', path: '/movie/now_playing', region: true, pages: 2, only: 'cinema' },
-    { id: 'upcoming', title: 'Futuros lançamentos', type: 'movie', path: '/movie/upcoming', region: true, pages: 2, only: 'upcoming' },
-    { id: 'top-movies', title: 'Filmes mais bem avaliados', type: 'movie', path: '/movie/top_rated', only: 'digital' },
-    { id: 'top-tv', title: 'Séries mais bem avaliadas', type: 'tv', path: '/tv/top_rated' }
+    { id: 'upcoming', title: 'Futuros lançamentos', type: 'movie', path: '/movie/upcoming', region: true, pages: 2, only: 'upcoming' }
 ];
+
+/* ---------------- streaming services (rows of the Filmes / Séries / Animes tabs) ---------------- */
+
+// Matched by name in TMDB's list for the region; the ids are a fallback.
+const PROVIDERS = [
+    { key: 'netflix', name: 'Netflix', match: /^netflix$/i, id: 8 },
+    { key: 'prime', name: 'Prime Video', match: /^amazon prime video$/i, id: 119 },
+    { key: 'disney', name: 'Disney+', match: /^disney\s*(\+|plus)$/i, id: 337 },
+    { key: 'max', name: 'Max', match: /^(hbo )?max$/i, id: 1899 },
+    // "Apple TV" alone is the store (buy / rent); the subscription is "Apple TV Plus" (350)
+    { key: 'apple', name: 'Apple TV+', match: /^apple tv(\+| plus)$/i, id: 350 },
+    { key: 'paramount', name: 'Paramount+', match: /^paramount\s*(\+|plus)$/i, id: 531 },
+    { key: 'globoplay', name: 'Globoplay', match: /^globoplay$/i, id: 307 },
+    { key: 'crunchyroll', name: 'Crunchyroll', match: /^crunchyroll$/i, id: 283 }
+];
+
+const STREAMING_SETS = {
+    movie: [ 'netflix', 'prime', 'disney', 'max', 'apple', 'paramount', 'globoplay' ],
+    tv: [ 'netflix', 'prime', 'disney', 'max', 'apple', 'paramount', 'globoplay' ],
+    anime: [ 'crunchyroll', 'netflix', 'prime' ]
+};
+
+async function providerIds(mediaType) {
+    const list = await tmdb(`/watch/providers/${mediaType}`, { watch_region: config.region }, 24 * 3600000)
+        .then(b => b?.results || [])
+        .catch(() => []);
+    const out = new Map();
+    for (const p of PROVIDERS) {
+        const hit = list.find(x => p.match.test(String(x.provider_name || '').trim()));
+        out.set(p.key, {
+            key: p.key,
+            id: hit?.provider_id || p.id,
+            name: p.name,
+            logo: hit?.logo_path ? IMG + 'w92' + hit.logo_path : ''
+        });
+    }
+    return out;
+}
+
+const isAnime = r => r.original_language === 'ja' && (r.genre_ids || []).includes(16);
+
+async function providerRow(kind, provider, recent) {
+    const mediaType = kind === 'movie' ? 'movie' : 'tv';
+    const params = {
+        with_watch_providers: provider.id,
+        watch_region: config.region,
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'popularity.desc',
+        ...(kind === 'anime' ? { with_genres: 16, with_original_language: 'ja' } : {})
+    };
+    if (recent) {
+        const from = isoDay(Date.now() - 365 * DAY);
+        const to = isoDay(Date.now());
+        if (mediaType === 'movie') Object.assign(params, { 'primary_release_date.gte': from, 'primary_release_date.lte': to });
+        else Object.assign(params, { 'first_air_date.gte': from, 'first_air_date.lte': to });
+    } else {
+        params['vote_count.gte'] = mediaType === 'movie' ? 50 : 20;
+    }
+    const pages = await Promise.all([ 1, 2 ].map(page => tmdbLimit(() => tmdb(`/discover/${mediaType}`, { ...params, page }, 6 * 3600000)).catch(() => null)));
+    const seen = new Set();
+    const items = [];
+    for (const body of pages) {
+        for (const r of body?.results || []) {
+            if (!r.poster_path || seen.has(r.id)) continue;
+            if (kind === 'tv' && isAnime(r)) continue; // animes have their own tab
+            seen.add(r.id);
+            items.push(mapTmdbItem(r, mediaType));
+        }
+    }
+    return items.slice(0, 20);
+}
+
+/** Popular and recent titles of each streaming service, for one tab. */
+async function streaming(user, kind) {
+    const mediaType = kind === 'movie' ? 'movie' : 'tv';
+    const ids = await providerIds(mediaType);
+    const ctx = await stateContext(user);
+    const providers = await Promise.all(STREAMING_SETS[kind].map(async key => {
+        const p = ids.get(key);
+        const [ popular, recent ] = await Promise.all([ providerRow(kind, p, false), providerRow(kind, p, true) ]);
+        // titles on a streaming service are out digitally: no release-date lookups needed
+        const known = it => ({ ...it, onStreaming: true });
+        const [ pop, rec ] = await Promise.all([ decorate(user, popular.map(known), ctx), decorate(user, recent.map(known), ctx) ]);
+        return { key: p.key, id: p.id, name: p.name, logo: p.logo, popular: pop, recent: rec };
+    }));
+    return { kind, providers: providers.filter(p => p.popular.length || p.recent.length) };
+}
+
 
 /* ---------------- Jellyfin library index (what the user already has) ---------------- */
 
@@ -541,6 +623,7 @@ async function stateFor(user, ctx, it, full = false) {
         if (jellyfinId) return { state: 'library', jellyfinId };
         const dl = ctx.movies.get(String(it.tmdbId));
         if (dl) return { state: 'downloading', ...dl };
+        if (it.onStreaming) return { state: 'none', availability: 'digital' };
         return { state: 'none', ...(await movieAvailability(it.tmdbId, it.date)) };
     }
     const dl = ctx.tv.get(String(it.tmdbId));
@@ -1265,7 +1348,10 @@ async function route(req, url) {
 
     if (p === '/api/search') return search(user, url.searchParams.get('q') || '');
 
-    let m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)$/);
+    let m = p.match(/^\/api\/streaming\/(movie|tv|anime)$/);
+    if (m) return streaming(user, m[1]);
+
+    m = p.match(/^\/api\/title\/(movie|tv)\/(\d+)$/);
     if (m) return titleDetails(user, typeOf(m[1]), intId(m[2]));
 
     m = p.match(/^\/api\/state\/(movie|tv)\/(\d+)$/);
