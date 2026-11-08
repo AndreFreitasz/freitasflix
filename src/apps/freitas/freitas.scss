@@ -2926,3 +2926,42 @@ html.layout-tv {
         transition: none;
     }
 }
+
+/* ---------- player (TV): aim-then-seek preview above the seek bar ---------- */
+.fp-seekpreview {
+    position: absolute;
+    bottom: calc(100% + 1em);
+    left: 0;
+    z-index: 2;
+    padding: 0.3em;
+    border-radius: 0.6em;
+    background: rgba(12, 12, 16, 0.92);
+    box-shadow: 0 0.5em 1.5em rgba(0, 0, 0, 0.5);
+    transform: translateX(-50%);
+    pointer-events: none;
+
+    &.hide {
+        display: none;
+    }
+
+    .chapterThumbContainer {
+        overflow: hidden;
+        border-radius: 0.4em;
+        box-shadow: none;
+    }
+
+    /* time under the frame, never over a bright image */
+    .chapterThumbTextContainer {
+        position: static;
+        padding: 0.2em 0.4em 0;
+        text-align: center;
+    }
+}
+
+.fp-seekpreview__time {
+    margin: 0;
+    padding: 0.2em 0.6em;
+    font-size: 1.4em;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}

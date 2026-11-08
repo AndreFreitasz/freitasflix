@@ -33,6 +33,8 @@ import { ServerConnections } from 'lib/jellyfin-apiclient';
 import LibraryMenu from 'scripts/libraryMenu';
 import { setBackdropTransparency, TRANSPARENCY_LEVEL } from 'components/backdrop/backdrop';
 import { pluginManager } from 'components/pluginManager';
+import { createSeekPreview } from './seekPreview';
+import { tileFor } from './trickplayTile';
 
 function getOpenedDialog() {
     return document.querySelector('.dialogContainer .dialog.opened');
@@ -1426,6 +1428,87 @@ export default function (view) {
         resetIdle();
     }
 
+    /* ---------- TV: aim, then seek (frame preview every 10 s) ---------- */
+
+    let seekPreviewElement;
+
+    function getSeekPreviewElement() {
+        if (!seekPreviewElement) {
+            seekPreviewElement = document.createElement('div');
+            seekPreviewElement.className = 'fp-seekpreview hide';
+            nowPlayingPositionSlider.parentNode.appendChild(seekPreviewElement);
+        }
+        return seekPreviewElement;
+    }
+
+    function renderSeekPreview(ms) {
+        const el = getSeekPreviewElement();
+        const ticks = ms * 10_000;
+        const runtime = currentRuntimeTicks || 0;
+        const percent = runtime ? Math.min(100, ticks / runtime * 100) : 0;
+        const item = currentItem;
+        const mediaSourceId = currentPlayer?.streamInfo?.mediaSource?.Id;
+        let hasFrame = false;
+        if (trickplayResolution && item?.Trickplay && mediaSourceId) {
+            if (!el.classList.contains('fp-seekpreview--frame')) el.innerHTML = '';
+            hasFrame = updateTrickplayBubbleHtml(ServerConnections.getApiClient(item.ServerId), trickplayResolution, item, mediaSourceId, el, ticks);
+        }
+        if (!hasFrame) el.innerHTML = '<h2 class="fp-seekpreview__time">' + datetime.getDisplayRunningTime(ticks) + '</h2>';
+        el.classList.toggle('fp-seekpreview--frame', hasFrame);
+        el.classList.remove('hide');
+        // centred on the target, but kept inside the bar
+        const barWidth = nowPlayingPositionSlider.parentNode.offsetWidth;
+        const half = el.offsetWidth / 2;
+        const x = percent / 100 * barWidth;
+        el.style.left = (barWidth > 2 * half ? Math.min(barWidth - half, Math.max(half, x)) : x) + 'px';
+        nowPlayingPositionSlider.dragging = true;
+        nowPlayingPositionSlider.value = percent;
+    }
+
+    function endSeekPreview() {
+        nowPlayingPositionSlider.dragging = false;
+        seekPreviewElement?.classList.add('hide');
+    }
+
+    const seekPreview = createSeekPreview({
+        getPositionMs: () => playbackManager.currentTime(currentPlayer) || 0,
+        getDurationMs: () => (currentRuntimeTicks || 0) / 10_000,
+        onPreview: renderSeekPreview,
+        onCommit: ms => {
+            endSeekPreview();
+            playbackManager.seek(ms * 10_000, currentPlayer);
+        },
+        onCancel: endSeekPreview
+    });
+
+    function onSeekKeyCapture(e) {
+        if (!layoutManager.tv || enableProgressByTimeOfDay) return;
+        if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || getOpenedDialog()) return;
+        const key = keyboardnavigation.getKeyName(e);
+        const isLeft = key === 'ArrowLeft' || key === 'Left';
+        const isRight = key === 'ArrowRight' || key === 'Right';
+        const onSlider = document.activeElement === nowPlayingPositionSlider;
+        if ((isLeft || isRight) && (onSlider || !currentVisibleMenu) && currentRuntimeTicks) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!onSlider) showOsd(nowPlayingPositionSlider);
+            else resetIdle();
+            seekPreview.step(isLeft ? -1 : 1);
+            return;
+        }
+        if (!seekPreview.active()) return;
+        if (key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            seekPreview.commit();
+        } else if (key === 'Escape' || key === 'Back' || key === 'BrowserBack' || key === 'GamepadB') {
+            // Back cancels the aim instead of leaving the player
+            e.preventDefault();
+            e.stopPropagation();
+            seekPreview.cancel();
+        }
+    }
+
     function onWheel(e) {
         if (getOpenedDialog()) return;
         if (e.deltaY < 0) {
@@ -1502,17 +1585,7 @@ export default function (view) {
         }
 
         // Update trickplay values
-        const currentTimeMs = positionTicks / 10_000;
-        const currentTile = Math.floor(currentTimeMs / trickplayInfo.Interval);
-
-        const tileSize = trickplayInfo.TileWidth * trickplayInfo.TileHeight;
-        const tileOffset = currentTile % tileSize;
-        const index = Math.floor(currentTile / tileSize);
-
-        const tileOffsetX = tileOffset % trickplayInfo.TileWidth;
-        const tileOffsetY = Math.floor(tileOffset / trickplayInfo.TileWidth);
-        const offsetX = -(tileOffsetX * trickplayInfo.Width);
-        const offsetY = -(tileOffsetY * trickplayInfo.Height);
+        const { index, x: offsetX, y: offsetY } = tileFor(positionTicks / 10_000, trickplayInfo);
 
         const imgSrc = apiClient.getUrl('Videos/' + item.Id + '/Trickplay/' + trickplayInfo.Width + '/' + index + '.jpg', {
             ApiKey: apiClient.accessToken(),
@@ -1680,6 +1753,7 @@ export default function (view) {
                 capture: true,
                 passive: true
             });
+            document.addEventListener('keydown', onSeekKeyCapture, true);
             document.addEventListener('wheel', onWheel);
             /* eslint-disable-next-line compat/compat */
             dom.addEventListener(window, window.PointerEvent ? 'pointerdown' : 'mousedown', onWindowMouseDown, {
@@ -1723,6 +1797,8 @@ export default function (view) {
             capture: true,
             passive: true
         });
+        document.removeEventListener('keydown', onSeekKeyCapture, true);
+        seekPreview.cancel();
         document.removeEventListener('wheel', onWheel);
         /* eslint-disable-next-line compat/compat */
         dom.removeEventListener(window, window.PointerEvent ? 'pointerdown' : 'mousedown', onWindowMouseDown, {
