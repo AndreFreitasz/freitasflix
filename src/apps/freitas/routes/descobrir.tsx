@@ -8,6 +8,7 @@ import { Row } from '../components/Cards';
 import { CatalogCard } from '../components/Catalog';
 import { Icon } from '../components/Icons';
 import FreitasPage, { SkeletonRow } from '../components/Layout';
+import { useIsRestoring } from '../pageMemory';
 
 /** Bridge not reachable / not configured: explain what to do instead of an empty page. */
 export const BridgeHelp: FC<{ message?: string }> = ({ message }) => (
@@ -80,9 +81,10 @@ const Descobrir: FC = () => {
     const { data, isLoading, isError, error } = useDiscover();
 
     // the header's search button opens this page ready to type
+    const restoring = useIsRestoring();
     useEffect(() => {
-        if (params.get('busca')) inputRef.current?.focus();
-    }, [ params ]);
+        if (params.get('busca') && !restoring) inputRef.current?.focus();
+    }, [ params, restoring ]);
 
     // keep the query in the address so "Voltar" from a title returns to the results
     useEffect(() => {

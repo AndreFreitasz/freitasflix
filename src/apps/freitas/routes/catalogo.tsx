@@ -20,6 +20,7 @@ import { TitleArt } from '../components/Hero';
 import { Icon, PlayGlyph } from '../components/Icons';
 import FreitasPage from '../components/Layout';
 import { RatingsRow } from '../components/Ratings';
+import { useIsRestoring } from '../pageMemory';
 import { formatRuntime, itemHue } from '../utils';
 import { BridgeHelp } from './descobrir';
 import { BackButton, InfoBlock } from './titulo';
@@ -153,9 +154,10 @@ const CatalogHero: FC<HeroProps> = ({ title: t, st, canDownload, seriesOk, panel
     else if (isTv && st.jellyfinId && st.missing) downloadLabel = 'Baixar o que falta';
     else if (isTv && st.jellyfinId) downloadLabel = 'Baixar episódios';
 
+    const restoring = useIsRestoring();
     useEffect(() => {
-        if (layoutManager.tv) firstRef.current?.querySelector<HTMLElement>('a, button:not([disabled])')?.focus();
-    }, []);
+        if (layoutManager.tv && !restoring) firstRef.current?.querySelector<HTMLElement>('a, button:not([disabled])')?.focus();
+    }, [ restoring ]);
 
     return (
         <section className='fp-hero fp-hero--title'>

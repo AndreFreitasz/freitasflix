@@ -62,7 +62,7 @@ export const CatalogCard: FC<{ item: CatalogItem }> = ({ item }) => {
     const eyebrow = [ kindLabel(item), item.year ].filter(Boolean).join(' · ');
     const fakeForHue = useMemo(() => ({ Id: `tmdb-${item.tmdbId}`, Name: item.title }), [ item.tmdbId, item.title ]);
     return (
-        <a className='fp-card fp-card--poster' href={catalogUrl(item)} aria-label={item.title}>
+        <a className='fp-card fp-card--poster' href={catalogUrl(item)} aria-label={item.title} data-fkey={`cat:${item.type}:${item.tmdbId}`}>
             <div className='fp-card__frame fp-ratio-poster'>
                 <div className='fp-art' style={{ background: posterPlaceholder(fakeForHue) }}>
                     {item.poster && !failed && (

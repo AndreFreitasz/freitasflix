@@ -1,8 +1,9 @@
-import React, { type FC, type PropsWithChildren, useEffect, useRef } from 'react';
+import React, { type FC, type PropsWithChildren, useCallback, useEffect, useRef } from 'react';
 
 import layoutManager from 'components/layoutManager';
 import Page from 'components/Page';
 
+import { useFocusMemory } from '../pageMemory';
 import { installTvNav } from '../tvNav';
 import { ensureVisible } from '../utils';
 
@@ -41,6 +42,14 @@ const FreitasPage: FC<PropsWithChildren<FreitasPageProps>> = ({ id, title, child
         root.addEventListener('focusin', onFocusIn);
         return () => root.removeEventListener('focusin', onFocusIn);
     }, []);
+
+    // going back reopens the page on the item that had focus; if it is gone, start from the top
+    const onGiveUp = useCallback(() => {
+        if (!layoutManager.tv) return;
+        window.scrollTo(0, 0);
+        rootRef.current?.querySelector<HTMLElement>('.fp-btn-play')?.focus();
+    }, []);
+    useFocusMemory(rootRef, onGiveUp);
 
     // TVs: row-by-row arrows (Jellyfin's focusManager measures every card on each press)
     useEffect(() => {

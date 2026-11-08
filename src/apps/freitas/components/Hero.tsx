@@ -6,6 +6,7 @@ import layoutManager from 'components/layoutManager';
 import { useApi } from 'hooks/useApi';
 
 import { useMyList, useToggleMyList } from '../api';
+import { useIsRestoring } from '../pageMemory';
 import { playItem } from '../playback';
 import {
     backdropWidth,
@@ -199,12 +200,13 @@ const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
     // Remotes need a starting point: put the focus on "Assistir" when the page opens
     // (only if nothing else has it yet).
     const hasItems = count > 0;
+    const restoring = useIsRestoring();
     useEffect(() => {
-        if (!layoutManager.tv || !hasItems) return;
+        if (!layoutManager.tv || !hasItems || restoring) return;
         const active = document.activeElement;
         if (active && active !== document.body && active.closest('.fp-root')) return;
         sectionRef.current?.querySelector<HTMLElement>('.fp-btn-play')?.focus();
-    }, [ hasItems ]);
+    }, [ hasItems, restoring ]);
     const item = items[index];
     const width = backdropWidth();
 
@@ -299,7 +301,7 @@ const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
                 <MetaLine item={item} />
                 {item.Overview && <p className='fp-hero__syn'>{item.Overview}</p>}
                 <div className='fp-actions-row'>
-                    <button type='button' className='fp-btn-play' onClick={onPlay}>
+                    <button type='button' className='fp-btn-play' onClick={onPlay} data-fkey='hero:play'>
                         <PlayGlyph />
                         <span>Assistir</span>
                     </button>
@@ -307,13 +309,14 @@ const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
                         type='button'
                         className='fp-btn-round'
                         aria-pressed={inList}
+                        data-fkey='hero:list'
                         aria-label={inList ? 'Remover da minha lista' : 'Adicionar à minha lista'}
                         title={inList ? 'Remover da minha lista' : 'Adicionar à minha lista'}
                         onClick={onToggleList}
                     >
                         <Icon name={inList ? 'check' : 'plus'} size={22} strokeWidth={2.2} className='' />
                     </button>
-                    <a className='fp-btn-round' href={itemUrl(item)} aria-label='Mais informações' title='Mais informações'>
+                    <a className='fp-btn-round' href={itemUrl(item)} aria-label='Mais informações' title='Mais informações' data-fkey='hero:info'>
                         <Icon name='info' size={22} className='' />
                     </a>
                 </div>

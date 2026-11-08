@@ -1,7 +1,7 @@
 import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models/base-item-dto';
 import { ImageType } from '@jellyfin/sdk/lib/generated-client/models/image-type';
-import React, { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { type FC, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 
 import layoutManager from 'components/layoutManager';
 import { appRouter } from 'components/router/appRouter';
@@ -28,6 +28,7 @@ import { Icon, PlayGlyph } from '../components/Icons';
 import { RatingsRow, TechChips } from '../components/Ratings';
 import { TrackPickers, useTrackSelection } from '../components/Tracks';
 import FreitasPage from '../components/Layout';
+import { isRestoring, pageKey, useIsRestoring, usePageState } from '../pageMemory';
 import { type PlayTracks, playItem, playTrailer } from '../playback';
 import { useItemDetails } from '../ratings';
 import {
@@ -67,12 +68,13 @@ interface PlayButtonProps {
 const PlayButton: FC<PlayButtonProps> = ({ target, label, focusOnTv, tracks }) => {
     const ref = useRef<HTMLButtonElement>(null);
     const onClick = useCallback(() => playItem(target, false, tracks), [ target, tracks ]);
+    const restoring = useIsRestoring();
     useEffect(() => {
-        // TV remotes need a starting point
-        if (focusOnTv && layoutManager.tv) ref.current?.focus();
-    }, [ focusOnTv ]);
+        // TV remotes need a starting point (unless coming back: the page focuses where the user was)
+        if (focusOnTv && layoutManager.tv && !restoring) ref.current?.focus();
+    }, [ focusOnTv, restoring ]);
     return (
-        <button ref={ref} type='button' className='fp-btn-play' onClick={onClick}>
+        <button ref={ref} type='button' className='fp-btn-play' onClick={onClick} data-fkey='hero:play'>
             <PlayGlyph size={22} />
             <span>{label}</span>
         </button>
@@ -172,6 +174,7 @@ const EpisodeRow: FC<{ ep: BaseItemDto }> = ({ ep }) => {
         <button
             type='button'
             className='fp-ep'
+            data-fkey={`ep:${ep.Id}`}
             aria-label={`Episódio ${ep.IndexNumber ?? ''}: ${ep.Name}`}
             onClick={onClick}
         >
@@ -211,7 +214,7 @@ const EpisodeRow: FC<{ ep: BaseItemDto }> = ({ ep }) => {
 const SeasonButton: FC<{ season: BaseItemDto, active: boolean, onPick: (id?: string) => void }> = ({ season, active, onPick }) => {
     const onClick = useCallback(() => onPick(season.Id || undefined), [ season.Id, onPick ]);
     return (
-        <button type='button' className='fp-season' aria-pressed={active} onClick={onClick}>
+        <button type='button' className='fp-season' aria-pressed={active} onClick={onClick} data-fkey={`season:${season.Id}`}>
             {season.Name}
         </button>
     );
@@ -219,18 +222,10 @@ const SeasonButton: FC<{ season: BaseItemDto, active: boolean, onPick: (id?: str
 
 const Episodes: FC<{ series: BaseItemDto, initialSeasonId?: string }> = ({ series, initialSeasonId }) => {
     const { data: seasons } = useSeasons(series.Id || undefined);
-    const [ seasonId, setSeasonId ] = useState<string | undefined>(initialSeasonId);
-
-    useEffect(() => {
-        if (initialSeasonId) setSeasonId(initialSeasonId);
-    }, [ initialSeasonId ]);
-
-    useEffect(() => {
-        if (!seasonId && seasons?.length) {
-            const firstRegular = seasons.find(s => (s.IndexNumber ?? 0) > 0) || seasons[0];
-            setSeasonId(firstRegular.Id || undefined);
-        }
-    }, [ seasons, seasonId ]);
+    // the season the user picked survives going to the player and back
+    const [ picked, setSeasonId ] = usePageState<string | undefined>('season', undefined);
+    const firstRegular = seasons?.find(s => (s.IndexNumber ?? 0) > 0) || seasons?.[0];
+    const seasonId = picked || initialSeasonId || firstRegular?.Id || undefined;
 
     const { data: episodes, isPending } = useEpisodes(series.Id || undefined, seasonId);
     const count = episodes?.length || 0;
@@ -308,7 +303,7 @@ const Cast: FC<{ item: BaseItemDto }> = ({ item }) => {
 const TabButton: FC<{ id: TabId, label: string, active: boolean, onPick: (id: TabId) => void }> = ({ id, label, active, onPick }) => {
     const onClick = useCallback(() => onPick(id), [ id, onPick ]);
     return (
-        <button type='button' role='tab' className='fp-tab' aria-selected={active} onClick={onClick}>
+        <button type='button' role='tab' className='fp-tab' aria-selected={active} onClick={onClick} data-fkey={`tab:${id}`}>
             {label}
         </button>
     );
@@ -402,7 +397,7 @@ const TitleView: FC<{ item: BaseItemDto }> = ({ item }) => {
         if (actors.length) list.push({ id: 'cast', label: 'Elenco' });
         return list;
     }, [ isSeries, extras, actors.length ]);
-    const [ tab, setTab ] = useState<TabId | undefined>();
+    const [ tab, setTab ] = usePageState<TabId | undefined>('tab', undefined);
     const activeTab = tab && tabs.some(t => t.id === tab) ? tab : tabs[0]?.id;
 
     const playTarget = (isSeries ? (nextUp || firstEp) : item) || item;
@@ -468,9 +463,12 @@ const Titulo: FC = () => {
         }
     }, [ item ]);
 
+    const location = useLocation();
+    const key = pageKey(location);
     useEffect(() => {
-        window.scrollTo(0, 0);
-    }, [ id ]);
+        // a new title opens at the top; coming back, the page memory restores the scroll
+        if (!isRestoring(key)) window.scrollTo(0, 0);
+    }, [ id, key ]);
 
     return (
         <FreitasPage id='freitasTitlePage' title={item?.Name || ''}>

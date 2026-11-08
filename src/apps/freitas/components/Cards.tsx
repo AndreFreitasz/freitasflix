@@ -60,7 +60,7 @@ export const PosterCard: FC<{ item: BaseItemDto, showNew?: boolean }> = ({ item,
     const { active, handlers } = useCardActive();
     const title = item.Type === 'Episode' ? (item.SeriesName || item.Name || '') : (item.Name || '');
     return (
-        <a className='fp-card fp-card--poster' href={itemUrl(item)} aria-label={title} {...handlers}>
+        <a className='fp-card fp-card--poster' href={itemUrl(item)} aria-label={title} data-fkey={`item:${item.Id}`} {...handlers}>
             <div className='fp-card__frame fp-ratio-poster'>
                 <Art src={imageUrl(api, item, ImageType.Primary, 220)} item={item} />
                 <div className='fp-sheen' aria-hidden='true' />
@@ -80,6 +80,7 @@ export const RankCard: FC<{ item: BaseItemDto, rank: number }> = ({ item, rank }
     return (
         <a
             className='fp-card fp-card--rank'
+            data-fkey={`item:${item.Id}`}
             href={itemUrl(item)}
             aria-label={`${rank}º: ${item.Name}`}
             {...handlers}
@@ -111,6 +112,7 @@ export const WideCard: FC<{ item: BaseItemDto }> = ({ item }) => {
         <button
             type='button'
             className='fp-card fp-card--wide'
+            data-fkey={`item:${item.Id}`}
             aria-label={`Continuar ${title}`}
             onClick={onClick}
         >
@@ -160,7 +162,7 @@ export const Row: FC<RowProps> = ({ title, logo, seeAllHref, variant = 'poster',
             <div className={`fp-scroller fp-pad fp-scroller--${variant} focuscontainer-x`}>
                 {children}
                 {seeAllHref && layoutManager.tv && (
-                    <a className={`fp-card fp-card--${variant === 'wide' ? 'wide' : 'poster'} fp-seeall-tile`} href={seeAllHref}>
+                    <a className={`fp-card fp-card--${variant === 'wide' ? 'wide' : 'poster'} fp-seeall-tile`} href={seeAllHref} data-fkey='seeall'>
                         <div className={`fp-card__frame fp-seeall-tile__frame ${variant === 'wide' ? 'fp-ratio-wide' : 'fp-ratio-poster'}`}>
                             <span className='fp-seeall-tile__label'>
                                 <Icon name='chevronRight' size={28} />
