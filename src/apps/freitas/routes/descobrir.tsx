@@ -61,7 +61,7 @@ const SearchResults: FC<{ query: string, focusTick: number }> = ({ query, focusT
                 {' '}<a href={libraryHref}>Buscar só na sua biblioteca</a>
             </p>
             {data.items.length > 0 && (
-                <div className='fp-catgrid' ref={gridRef}>
+                <div className='fp-catgrid' data-nav='native' ref={gridRef}>
                     {data.items.map(item => <CatalogCard key={`${item.type}-${item.tmdbId}`} item={item} />)}
                 </div>
             )}

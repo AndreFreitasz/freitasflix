@@ -3,6 +3,7 @@ import React, { type FC, type PropsWithChildren, useEffect, useRef } from 'react
 import layoutManager from 'components/layoutManager';
 import Page from 'components/Page';
 
+import { installTvNav } from '../tvNav';
 import { ensureVisible } from '../utils';
 
 import Header from './Header';
@@ -39,6 +40,13 @@ const FreitasPage: FC<PropsWithChildren<FreitasPageProps>> = ({ id, title, child
         };
         root.addEventListener('focusin', onFocusIn);
         return () => root.removeEventListener('focusin', onFocusIn);
+    }, []);
+
+    // TVs: row-by-row arrows (Jellyfin's focusManager measures every card on each press)
+    useEffect(() => {
+        const root = rootRef.current;
+        if (!root || !layoutManager.tv) return;
+        return installTvNav(root);
     }, []);
 
     return (

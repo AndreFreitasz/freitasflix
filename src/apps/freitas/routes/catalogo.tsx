@@ -190,7 +190,7 @@ const CatalogHero: FC<HeroProps> = ({ title: t, st, canDownload, seriesOk, panel
                 {t.overview && <p className='fp-hero__syn fp-hero__syn--wide'>{t.overview}</p>}
                 <StatusLine t={t} st={st} />
 
-                <div className='fp-actions-row' ref={firstRef}>
+                <div className='fp-actions-row' data-nav-group='' ref={firstRef}>
                     {st.jellyfinId && (
                         <a className='fp-btn-play' href={`#/titulo?id=${st.jellyfinId}`}>
                             <PlayGlyph size={22} />

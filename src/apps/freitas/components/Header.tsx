@@ -74,7 +74,7 @@ const Header: FC<HeaderProps> = ({ overlay = false, inline = false }) => {
     if (!user) return null;
 
     return (
-        <header className={classNames('fp-header', 'focus-lowpriority', { 'fp-header--overlay': overlay, 'fp-header--inline': inline })}>
+        <header className={classNames('fp-header', 'focus-lowpriority', { 'fp-header--overlay': overlay, 'fp-header--inline': inline })} data-nav-group=''>
             <a className='fp-brand' href='#/home' aria-label='FREITAS+ — início'>
                 <img className='fp-logo' src={logo} alt='FREITAS+' width={610} height={120} />
             </a>

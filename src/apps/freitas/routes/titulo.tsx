@@ -370,7 +370,7 @@ const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem }
                     <TechChips item={techItem} />
                 </div>
                 {item.Overview && <p className='fp-hero__syn fp-hero__syn--wide'>{item.Overview}</p>}
-                <div className='fp-actions-row'>
+                <div className='fp-actions-row' data-nav-group=''>
                     <PlayButton target={playTarget} label={playLabel} focusOnTv tracks={trackSel.tracks} />
                     <ListButton item={item} />
                     <FavoriteButton item={item} />

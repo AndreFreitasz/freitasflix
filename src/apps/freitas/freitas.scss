@@ -941,6 +941,25 @@ body.fp-route .mainDrawerHandle {
     }
 }
 
+/* TVs: "Ver tudo" as the row's last tile */
+.fp-seeall-tile__frame {
+    position: relative;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fp-seeall-tile__label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: u(8);
+    color: #e6e6ee;
+    font-size: u(18);
+    font-weight: 600;
+}
+
 .fp-scroller {
     display: flex;
     overflow-x: auto;
@@ -2796,6 +2815,17 @@ body.fp-route .mainDrawerHandle {
  * solid tinted surfaces and only transform/opacity are animated.
  */
 html.layout-tv {
+    /* rows off screen are neither laid out nor painted (Chromium 85+; older ignore it) */
+    .fp-row {
+        content-visibility: auto;
+        contain-intrinsic-size: auto u(420);
+    }
+
+    /* while the remote drives, no hover hit tests after each scroll (tvNav sets it) */
+    .fp-keynav {
+        pointer-events: none;
+    }
+
     .fp-root *,
     .fp-header,
     .fp-header *,

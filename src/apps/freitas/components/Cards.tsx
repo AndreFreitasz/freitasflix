@@ -2,6 +2,7 @@ import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models/base
 import { ImageType } from '@jellyfin/sdk/lib/generated-client/models/image-type';
 import React, { type FC, type ReactNode, useCallback, useState } from 'react';
 
+import layoutManager from 'components/layoutManager';
 import { appRouter } from 'components/router/appRouter';
 import { useApi } from 'hooks/useApi';
 
@@ -150,13 +151,24 @@ export const Row: FC<RowProps> = ({ title, logo, seeAllHref, variant = 'poster',
                     {title}
                 </h2>
                 {seeAllHref && (
-                    <a className='fp-seeall' href={seeAllHref}>
+                    // on TVs the tile at the row's end takes the remote instead (one ↓ per row)
+                    <a className='fp-seeall' href={seeAllHref} tabIndex={layoutManager.tv ? -1 : undefined}>
                         Ver tudo <Icon name='chevronRight' size={16} />
                     </a>
                 )}
             </div>
             <div className={`fp-scroller fp-pad fp-scroller--${variant} focuscontainer-x`}>
                 {children}
+                {seeAllHref && layoutManager.tv && (
+                    <a className={`fp-card fp-card--${variant === 'wide' ? 'wide' : 'poster'} fp-seeall-tile`} href={seeAllHref}>
+                        <div className={`fp-card__frame fp-seeall-tile__frame ${variant === 'wide' ? 'fp-ratio-wide' : 'fp-ratio-poster'}`}>
+                            <span className='fp-seeall-tile__label'>
+                                <Icon name='chevronRight' size={28} />
+                                Ver tudo
+                            </span>
+                        </div>
+                    </a>
+                )}
             </div>
         </section>
     );

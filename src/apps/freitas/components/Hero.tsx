@@ -274,6 +274,8 @@ const Hero: FC<{ items: BaseItemDto[] }> = ({ items }) => {
             className='fp-hero fp-hero--home'
             aria-label='Destaques'
             aria-roledescription='carrossel'
+            // one remote row: buttons then dots, so ↓ from Assistir goes to the first row
+            data-nav-group=''
             onFocus={onFocus}
             onBlur={onBlur}
             onPointerEnter={onPointerEnter}
