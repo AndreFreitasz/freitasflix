@@ -89,7 +89,9 @@ export const TechChips: FC<{ item?: BaseItemDto | null, className?: string }> = 
 };
 
 const HOVER_DELAY = 250;
-const FOCUS_DELAY = 450; // longer on remotes so holding an arrow key never triggers requests
+const FOCUS_DELAY = 450;
+// TVs: only when the remote rests on a card, so passing over cards costs no requests
+const TV_FOCUS_DELAY = 1000;
 
 function canHover() {
     try {
@@ -118,13 +120,15 @@ export function useCardActive() {
     useEffect(() => () => window.clearTimeout(timer.current), []);
 
     const onMouseEnter = useCallback(() => {
-        if (canHover()) start(HOVER_DELAY);
+        // TVs: ignore the pointer (cards scrolling under a resting pointer fire mouseenter)
+        if (!layoutManager.tv && canHover()) start(HOVER_DELAY);
     }, [ start ]);
     const onFocus = useCallback((e: React.FocusEvent) => {
-        if (isKeyboardFocus(e.currentTarget, layoutManager.tv)) start(FOCUS_DELAY);
+        if (isKeyboardFocus(e.currentTarget, layoutManager.tv)) start(layoutManager.tv ? TV_FOCUS_DELAY : FOCUS_DELAY);
     }, [ start ]);
     const onBlur = useCallback((e: React.FocusEvent) => {
-        if (!e.currentTarget.matches(':hover')) stop();
+        // no mouse on TVs: skip the :hover check (it forces a hit test on every move)
+        if (layoutManager.tv || !e.currentTarget.matches(':hover')) stop();
     }, [ stop ]);
 
     return { active, handlers: { onMouseEnter, onMouseLeave: stop, onFocus, onBlur } };
