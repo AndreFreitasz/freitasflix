@@ -1493,6 +1493,7 @@ export default function (view) {
             e.stopPropagation();
             if (!onSlider) showOsd(nowPlayingPositionSlider);
             else resetIdle();
+            inputManager.notify(); // the key stops here: keep "still watching?" and idle timers informed
             seekPreview.step(isLeft ? -1 : 1);
             return;
         }

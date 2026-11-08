@@ -138,6 +138,21 @@ describe('tvNav', () => {
         expect(root.classList.contains('fp-keynav')).toBe(false);
     });
 
+    it('reports user activity when it handles a key (screensaver / idle timers)', () => {
+        cleanup();
+        let n = 0;
+        cleanup = installTvNav(root, () => {
+            n++;
+        });
+        document.getElementById('r1-0')!.focus();
+        press('ArrowRight');
+        press('ArrowDown');
+        expect(n).toBe(2);
+        document.getElementById('solo')!.focus();
+        press('ArrowLeft'); // not handled: Jellyfin reports it itself
+        expect(n).toBe(2);
+    });
+
     it('cleanup removes the handler', () => {
         cleanup();
         document.getElementById('r1-0')!.focus();

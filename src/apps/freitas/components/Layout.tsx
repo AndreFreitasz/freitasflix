@@ -2,6 +2,7 @@ import React, { type FC, type PropsWithChildren, useCallback, useEffect, useRef 
 
 import layoutManager from 'components/layoutManager';
 import Page from 'components/Page';
+import inputManager from 'scripts/inputManager';
 
 import { useFocusMemory } from '../pageMemory';
 import { installTvNav } from '../tvNav';
@@ -55,7 +56,7 @@ const FreitasPage: FC<PropsWithChildren<FreitasPageProps>> = ({ id, title, child
     useEffect(() => {
         const root = rootRef.current;
         if (!root || !layoutManager.tv) return;
-        return installTvNav(root);
+        return installTvNav(root, inputManager.notify);
     }, []);
 
     return (

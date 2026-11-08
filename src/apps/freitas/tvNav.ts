@@ -87,8 +87,12 @@ function focusEl(el: HTMLElement) {
     }
 }
 
-/** Installs the navigation on a page root. Returns the cleanup. */
-export function installTvNav(root: HTMLElement): () => void {
+/**
+ * Installs the navigation on a page root. Returns the cleanup.
+ * `onActivity` runs for each key handled here (Jellyfin no longer sees it, and its
+ * idle timers — screensaver — must still know the user is there).
+ */
+export function installTvNav(root: HTMLElement, onActivity?: () => void): () => void {
     const memory = new WeakMap<HTMLElement, HTMLElement>();
 
     const onFocusIn = (e: Event) => {
@@ -150,6 +154,7 @@ export function installTvNav(root: HTMLElement): () => void {
             e.preventDefault();
             e.stopPropagation();
             root.classList.add(KEYNAV);
+            onActivity?.();
         }
     };
 
