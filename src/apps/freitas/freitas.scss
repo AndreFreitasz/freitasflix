@@ -2562,24 +2562,24 @@ body.fp-route .mainDrawerHandle {
     cursor: default;
 }
 
-.fp-btn-round--count {
-    position: relative;
-}
-
-.fp-btn-round__count {
-    position: absolute;
-    top: u(-4);
-    right: u(-4);
-    min-width: u(20);
-    height: u(20);
-    padding: 0 u(5);
+.fp-btn-dl__count {
+    margin-left: u(2);
+    padding: u(2) u(8);
     border-radius: 999px;
     background: #d97706;
     color: #fff;
-    font-size: u(11);
+    font-size: u(12);
     font-weight: 800;
-    line-height: u(20);
-    text-align: center;
+}
+
+.fp-season__missing {
+    margin-left: u(8);
+    padding: u(1) u(7);
+    border-radius: 999px;
+    background: rgba(217, 119, 6, 0.22);
+    color: #fbbf24;
+    font-size: u(11);
+    font-weight: 700;
 }
 
 .fp-cseasons {

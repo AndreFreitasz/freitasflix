@@ -20,8 +20,9 @@ import {
     useToggleFavorite,
     useToggleMyList
 } from '../api';
-import { useBridgeMe, useCatalogState } from '../bridge';
+import { type SeasonProgress, useBridgeMe, useCatalogState } from '../bridge';
 import { PosterCard, Row, itemUrl } from '../components/Cards';
+import { ReleasesPanel } from '../components/Catalog';
 import { setActiveLibrary } from '../components/Header';
 import { MetaLine, TitleArt } from '../components/Hero';
 import { Icon, PlayGlyph } from '../components/Icons';
@@ -125,22 +126,28 @@ const TrailerButton: FC<{ item: BaseItemDto }> = ({ item }) => {
     );
 };
 
-/** Series on disk: shortcut to download missing / new episodes (needs the bridge and Sonarr). */
-const SeriesDownloadButton: FC<{ item: BaseItemDto }> = ({ item }) => {
+/** Download info of a series on disk (needs the bridge, Sonarr and permission). */
+function useSeriesDownload(item: BaseItemDto) {
     const tmdbId = Number(item.ProviderIds?.Tmdb) || undefined;
     const { data: me } = useBridgeMe();
     const enabled = item.Type === 'Series' && !!tmdbId && !!me?.canDownload && !!me?.services?.series;
     const { data: st } = useCatalogState(enabled ? 'tv' : undefined, enabled ? tmdbId : undefined);
-    if (!enabled) return null;
-    const missing = st?.missing || 0;
-    const label = missing ? `Baixar episódios (faltam ${missing})` : 'Baixar episódios';
-    return (
-        <a className='fp-btn-round fp-btn-round--count' href={`#/catalogo?type=tv&tmdb=${tmdbId}`} aria-label={label} title={label}>
-            <Icon name='download' size={22} className='' />
-            {missing > 0 && <span className='fp-btn-round__count' aria-hidden='true'>{missing > 99 ? '99+' : missing}</span>}
-        </a>
-    );
-};
+    return {
+        enabled,
+        tmdbId,
+        missing: st?.missing || 0,
+        progress: (st?.seasons || []) as SeasonProgress[]
+    };
+}
+
+/** "Baixar episódios · faltam N": one click opens the options right on this page. */
+const SeriesDownloadButton: FC<{ missing: number, onClick: () => void }> = ({ missing, onClick }) => (
+    <button type='button' className='fp-btn-play fp-btn-play--alt fp-btn-dl' onClick={onClick}>
+        <Icon name='download' size={22} className='' />
+        <span>Baixar episódios</span>
+        {missing > 0 && <span className='fp-btn-dl__count'>faltam {missing}</span>}
+    </button>
+);
 
 export const BackButton: FC = () => {
     const onClick = useCallback(() => {
@@ -211,35 +218,62 @@ const EpisodeRow: FC<{ ep: BaseItemDto }> = ({ ep }) => {
     );
 };
 
-const SeasonButton: FC<{ season: BaseItemDto, active: boolean, onPick: (id?: string) => void }> = ({ season, active, onPick }) => {
+const SeasonButton: FC<{ season: BaseItemDto, active: boolean, missing?: number, onPick: (id?: string) => void }> = ({ season, active, missing, onPick }) => {
     const onClick = useCallback(() => onPick(season.Id || undefined), [ season.Id, onPick ]);
     return (
         <button type='button' className='fp-season' aria-pressed={active} onClick={onClick} data-fkey={`season:${season.Id}`}>
             {season.Name}
+            {!!missing && <span className='fp-season__missing'>faltam {missing}</span>}
         </button>
     );
 };
 
-const Episodes: FC<{ series: BaseItemDto, initialSeasonId?: string }> = ({ series, initialSeasonId }) => {
+interface EpisodesDownload {
+    tmdbId: number
+    progress: SeasonProgress[]
+    open: boolean
+    onClose: () => void
+}
+
+interface EpisodesProps {
+    series: BaseItemDto
+    initialSeasonId?: string
+    picked?: string
+    onPick: (id?: string) => void
+    download?: EpisodesDownload
+}
+
+const Episodes: FC<EpisodesProps> = ({ series, initialSeasonId, picked, onPick: setSeasonId, download }) => {
     const { data: seasons } = useSeasons(series.Id || undefined);
-    // the season the user picked survives going to the player and back
-    const [ picked, setSeasonId ] = usePageState<string | undefined>('season', undefined);
     const firstRegular = seasons?.find(s => (s.IndexNumber ?? 0) > 0) || seasons?.[0];
     const seasonId = picked || initialSeasonId || firstRegular?.Id || undefined;
 
     const { data: episodes, isPending } = useEpisodes(series.Id || undefined, seasonId);
     const count = episodes?.length || 0;
+    const seasonNumber = seasons?.find(s => s.Id === seasonId)?.IndexNumber ?? undefined;
+    const missingOf = (n?: number | null) => download?.progress.find(p => p.number === n)?.missingEpisodes.length || 0;
 
     return (
         <section aria-label='Episódios' className='fp-episodes'>
             <div className='fp-seasons focuscontainer-x'>
                 {(seasons || []).map(s => (
-                    <SeasonButton key={s.Id} season={s} active={s.Id === seasonId} onPick={setSeasonId} />
+                    <SeasonButton key={s.Id} season={s} active={s.Id === seasonId} missing={missingOf(s.IndexNumber)} onPick={setSeasonId} />
                 ))}
                 {count > 0 && (
                     <span className='fp-seasons__count'>{count === 1 ? '1 episódio' : `${count} episódios`}</span>
                 )}
             </div>
+            {download?.open && seasonNumber != null && (
+                <ReleasesPanel
+                    key={`tv-${seasonNumber}`}
+                    type='tv'
+                    tmdbId={download.tmdbId}
+                    season={download.progress.find(p => p.number === seasonNumber)}
+                    seasonNumber={seasonNumber}
+                    onClose={download.onClose}
+                    onStarted={download.onClose}
+                />
+            )}
             <div className='fp-ep-list'>
                 {isPending && seasonId && <div className='fp-skel fp-skel--ep' />}
                 {(episodes || []).map(ep => <EpisodeRow key={ep.Id} ep={ep} />)}
@@ -333,9 +367,11 @@ interface TitleHeroProps {
     playTarget: BaseItemDto
     playLabel: string
     techItem?: BaseItemDto | null
+    /** series: missing episodes and the action that opens the download options */
+    download?: { missing: number, onClick: () => void }
 }
 
-const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem }) => {
+const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem, download }) => {
     const { api } = useApi();
     const backdrop = imageUrl(api, item, ImageType.Backdrop, backdropWidth(720), 2400);
     const h = itemHue(item);
@@ -370,7 +406,7 @@ const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem }
                     <ListButton item={item} />
                     <FavoriteButton item={item} />
                     <TrailerButton item={item} />
-                    <SeriesDownloadButton item={item} />
+                    {download && <SeriesDownloadButton missing={download.missing} onClick={download.onClick} />}
                 </div>
                 <TrackPickers sel={trackSel} />
             </div>
@@ -400,12 +436,47 @@ const TitleView: FC<{ item: BaseItemDto }> = ({ item }) => {
     const [ tab, setTab ] = usePageState<TabId | undefined>('tab', undefined);
     const activeTab = tab && tabs.some(t => t.id === tab) ? tab : tabs[0]?.id;
 
+    // the season the user picked survives going to the player and back
+    const [ pickedSeason, setPickedSeason ] = usePageState<string | undefined>('season', undefined);
+    const { data: seasons } = useSeasons(seriesId);
+    const dl = useSeriesDownload(item);
+    const [ dlOpen, setDlOpen ] = usePageState('download', false);
+    const openDownload = useCallback(() => {
+        // straight to the season that has episodes missing, with the options below the seasons
+        const gap = dl.progress.find(p => p.missingEpisodes.length > 0);
+        const target = gap && seasons?.find(s => s.IndexNumber === gap.number)?.Id;
+        if (target) setPickedSeason(target);
+        setTab('episodes');
+        setDlOpen(true);
+        if (!layoutManager.tv) {
+            // seasons + options in view, below the fixed header
+            window.setTimeout(() => {
+                const el = document.querySelector('.fp-episodes');
+                if (!el) return;
+                const header = document.querySelector('.fp-header')?.getBoundingClientRect().bottom || 0;
+                window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - header - 24, behavior: 'smooth' });
+            }, 50);
+        }
+    }, [ dl.progress, seasons, setPickedSeason, setTab, setDlOpen ]);
+    const closeDownload = useCallback(() => {
+        setDlOpen(false);
+        if (layoutManager.tv) document.querySelector<HTMLElement>('.fp-btn-dl')?.focus();
+    }, [ setDlOpen ]);
+    const heroDownload = useMemo(
+        () => (dl.enabled ? { missing: dl.missing, onClick: openDownload } : undefined),
+        [ dl.enabled, dl.missing, openDownload ]
+    );
+    const episodesDownload = useMemo(
+        () => (dl.enabled && dl.tmdbId ? { tmdbId: dl.tmdbId, progress: dl.progress, open: dlOpen, onClose: closeDownload } : undefined),
+        [ dl.enabled, dl.tmdbId, dl.progress, dlOpen, closeDownload ]
+    );
+
     const playTarget = (isSeries ? (nextUp || firstEp) : item) || item;
     const playLabel = getPlayLabel(isSeries, isSeries ? (nextUp || firstEp || undefined) : item, firstEp);
 
     return (
         <>
-            <TitleHero item={item} playTarget={playTarget} playLabel={playLabel} techItem={isSeries ? firstEpFull : item} />
+            <TitleHero item={item} playTarget={playTarget} playLabel={playLabel} techItem={isSeries ? firstEpFull : item} download={heroDownload} />
 
             <main className='fp-title-main'>
                 <div className='fp-info fp-pad'>
@@ -426,7 +497,13 @@ const TitleView: FC<{ item: BaseItemDto }> = ({ item }) => {
                 )}
 
                 {activeTab === 'episodes' && isSeries && (
-                    <Episodes series={item} initialSeasonId={nextUp?.SeasonId || undefined} />
+                    <Episodes
+                        series={item}
+                        initialSeasonId={nextUp?.SeasonId || undefined}
+                        picked={pickedSeason}
+                        onPick={setPickedSeason}
+                        download={episodesDownload}
+                    />
                 )}
                 {activeTab === 'extras' && !!extras?.length && (
                     <section aria-label='Extras' className='fp-scroller fp-pad fp-scroller--wide focuscontainer-x'>
