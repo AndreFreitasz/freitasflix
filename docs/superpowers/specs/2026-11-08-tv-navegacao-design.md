@@ -44,8 +44,8 @@ Critérios de sucesso (medidos com CPU 6× mais lenta no Playwright, aba Filmes)
 
 ### Custo do foco nos cards
 - `useCardActive`: na TV, atraso de 1000 ms e cancelamento ao sair; sem `matches(':hover')`.
-- CSS TV: card focado sem `transform`; anel roxo de 3px + leve brilho (`filter` não; usar
-  `box-shadow` sólido sem blur no `.fp-card__frame`).
+- CSS TV: card focado sem `transform` e sem `filter`; destaque com anel roxo (outline de 3px)
+  e um `box-shadow` sólido, sem desfoque, no `.fp-card__frame`.
 
 ### B. Memória por página (`pageMemory.ts`)
 - Mapa em memória por chave `pathname + search`.
