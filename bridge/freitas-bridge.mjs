@@ -840,6 +840,25 @@ export function titleMatches(releaseTitle, name, movieYear) {
     return years.some(y => Math.abs(y - movieYear) <= 1);
 }
 
+/**
+ * Series releases start with the series name, then the season/episode or year
+ * ("War S01E09", "War.2025.S01"). Containing the name anywhere is not enough:
+ * short names ("Guerra", "War") would match "A Guerra do Vietnã", "Chief of War"…
+ */
+export function tvTitleMatches(releaseTitle, name) {
+    const t = words(String(releaseTitle || '').replace(/^\s*(\[[^\]]*\]\s*)+/, ''));
+    const full = words(name);
+    const core = full.replace(/^(the|a|an|o|os|as|le|la|les|el|los|der|die|das) /, '');
+    for (const n of new Set([ full, core ])) {
+        if (!n) continue;
+        if (t === n) return true;
+        if (!t.startsWith(n + ' ')) continue;
+        const next = t.slice(n.length + 1).split(' ')[0];
+        if (/^(s\d{1,2}(e\d+)*|e\d+|(19|20)\d\d|season|temporada|complete|completa)$/.test(next)) return true;
+    }
+    return false;
+}
+
 const sameRelease = (a, b) => (a.infoHash && a.infoHash === b.infoHash)
     || (a.indexer.toLowerCase() === b.indexer.toLowerCase() && a.title.replace(/\W+/g, '').toLowerCase() === b.title.replace(/\W+/g, '').toLowerCase());
 
@@ -1082,13 +1101,27 @@ async function tvReleases(tmdbId, season) {
             return [];
         });
     const byText = config.prowlarr.url && names.length ? Promise.all(names.map(searchText)).then(l => l.flat()) : Promise.resolve([]);
+    // trackers that index by TMDB id (UNIT3D: Samaritano…) find uploads whatever their name is
+    const byTmdb = config.prowlarr.url ?
+        prowlarr(`/api/v1/search?query=${encodeURIComponent(`{TmdbId:${tmdbId}}{Season:${season}}`)}&type=tvsearch&categories=5000&limit=100`, {}, 120000)
+            // an indexer that cannot search by id may answer with its latest uploads: keep only ours
+            .then(list => (list || []).filter(r => isTorrent(r) && (Number(r.tmdbId) === Number(tmdbId) || names.some(n => tvTitleMatches(r.title, n))))
+                .map(r => tvTextRelease(r, season)).filter(Boolean))
+            .catch(err => {
+                errors.push('Prowlarr: ' + err.message);
+                return [];
+            }) :
+        Promise.resolve([]);
 
-    const [ a, b ] = await Promise.all([ byId, byText ]);
+    const [ a, b, c ] = await Promise.all([ byId, byText, byTmdb ]);
     const extra = [];
-    for (const x of b) {
-        if (!names.some(n => titleMatches(x.title, n))) continue;
-        if (a.some(y => sameRelease(x, y)) || extra.some(y => sameRelease(x, y))) continue;
+    const add = x => {
+        if (a.some(y => sameRelease(x, y)) || extra.some(y => sameRelease(x, y))) return;
         extra.push(x);
+    };
+    c.forEach(add);
+    for (const x of b) {
+        if (names.some(n => tvTitleMatches(x.title, n))) add(x);
     }
     const all = [ ...a, ...extra ].sort((x, y) => y.score - x.score);
     return {
