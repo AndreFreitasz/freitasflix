@@ -36,6 +36,9 @@ services:
       QBIT_MOVIE_CATEGORY: "radarr"
       # a mesma categoria que o Sonarr usa (Sonarr > Settings > Download Clients > qBittorrent > Category)
       QBIT_TV_CATEGORY: "tv-sonarr"
+      # Importa sozinho downloads que o Radarr/Sonarr não conseguem ler pelo nome
+      # (lançamentos com nome em português): segundos entre verificações, 0 desliga
+      AUTO_IMPORT_INTERVAL: "120"
       # Quem pode baixar: admins | all | nomes separados por vírgula (ex.: andre,maria)
       ALLOW_DOWNLOAD: "admins"
       TMDB_LANGUAGE: "pt-BR"

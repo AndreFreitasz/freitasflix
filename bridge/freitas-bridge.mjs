@@ -35,6 +35,8 @@ const trimSlash = s => (s || '').replace(/\/+$/, '');
 
 export const config = {
     port: Number(env.PORT || 8099),
+    // seconds between checks for downloads stuck on "Unable to parse" (0 turns it off)
+    autoImportInterval: Number(env.AUTO_IMPORT_INTERVAL ?? 120),
     jellyfin: trimSlash(env.JELLYFIN_URL),
     tmdbKey: (env.TMDB_API_KEY || '').trim(),
     tmdbBase: trimSlash(env.TMDB_BASE_URL || 'https://api.themoviedb.org/3'),
@@ -1181,6 +1183,133 @@ async function titleDetails(user, type, tmdbId) {
     };
 }
 
+/* ---------------- automatic import of downloads stuck on their name ---------------- */
+
+/*
+ * Brazilian releases are often named in Portuguese and without the year
+ * ("Jogos Vorazes A Esperança - O Final.1080p…"). Radarr / Sonarr then know which title
+ * the download belongs to (it is in their queue, tied to the movie / episode) but cannot
+ * parse the file name, and wait for a manual import forever. This does that manual
+ * import, only for that reason, with the title they already matched.
+ */
+const STUCK_ON_NAME = /unable to parse|matched to (movie|series) by id|manual import required|unknown (movie|series)/i;
+const MIN_VIDEO = 50 * 1024 * 1024; // skip samples, subtitles, nfo…
+const importAttempts = new Map();
+
+const queueMessages = r => (r.statusMessages || []).flatMap(m => [ m.title, ...(m.messages || []) ]).join(' | ');
+
+export function stuckOnName(r) {
+    return /importpending|importblocked/i.test(r.trackedDownloadState || '')
+        && !!r.downloadId
+        && STUCK_ON_NAME.test(queueMessages(r));
+}
+
+/** Rejections other than "could not parse the name" (samples, not an upgrade…) mean: leave it alone. */
+const onlyNameRejections = f => (f.rejections || []).every(x => x.type !== 'permanent' || STUCK_ON_NAME.test(x.reason || ''));
+
+function tryOnce(downloadId) {
+    const n = importAttempts.get(downloadId) || 0;
+    if (n >= 3) return false;
+    importAttempts.set(downloadId, n + 1);
+    return true;
+}
+
+async function autoImportMovies() {
+    const q = await radarr('/api/v3/queue?pageSize=500&includeMovie=true');
+    for (const r of q?.records || []) {
+        if (!r.movieId || !stuckOnName(r) || !tryOnce(r.downloadId)) continue;
+        const items = await radarr(`/api/v3/manualimport?downloadId=${encodeURIComponent(r.downloadId)}&movieId=${r.movieId}&filterExistingFiles=false`);
+        const videos = (items || []).filter(f => f.path && (f.size || 0) >= MIN_VIDEO && onlyNameRejections(f));
+        if (!videos.length) continue;
+        const main = videos.reduce((a, b) => ((b.size || 0) > (a.size || 0) ? b : a));
+        await radarr('/api/v3/command', {
+            method: 'POST',
+            body: JSON.stringify({
+                name: 'ManualImport',
+                importMode: 'auto', // the download client's setting: hardlink/copy while seeding
+                files: [ {
+                    path: main.path,
+                    movieId: r.movieId,
+                    quality: main.quality || r.quality,
+                    languages: main.languages?.length ? main.languages : (r.languages || []),
+                    releaseGroup: main.releaseGroup || '',
+                    downloadId: r.downloadId,
+                    indexerFlags: main.indexerFlags || 0
+                } ]
+            })
+        });
+        importAttempts.set(r.downloadId, 99);
+        cache.delete('queue:movies');
+        log('importação automática (Radarr):', r.title);
+    }
+}
+
+async function autoImportEpisodes() {
+    const q = await sonarr('/api/v3/queue?pageSize=1000&includeSeries=true&includeEpisode=true');
+    // a season pack appears once per episode: group by download
+    const byDownload = new Map();
+    for (const r of q?.records || []) {
+        if (!r.seriesId || !stuckOnName(r)) continue;
+        if (!byDownload.has(r.downloadId)) byDownload.set(r.downloadId, { first: r, episodeIds: [] });
+        if (r.episodeId) byDownload.get(r.downloadId).episodeIds.push(r.episodeId);
+    }
+    for (const [ downloadId, { first: r, episodeIds } ] of byDownload) {
+        if (!tryOnce(downloadId)) continue;
+        const items = await sonarr(`/api/v3/manualimport?downloadId=${encodeURIComponent(downloadId)}&seriesId=${r.seriesId}&filterExistingFiles=false`);
+        const videos = (items || []).filter(f => f.path && (f.size || 0) >= MIN_VIDEO && onlyNameRejections(f));
+        if (!videos.length) continue;
+        let episodesOfSeries;
+        const files = [];
+        for (const f of videos) {
+            let ids = (f.episodes || []).map(e => e.id).filter(Boolean);
+            if (!ids.length && videos.length === 1) ids = episodeIds; // one file: the episode(s) Sonarr grabbed it for
+            if (!ids.length) {
+                // several files whose names Sonarr could not read: try "S02E05" in the file name
+                const parsed = parseEpisodes(f.path.split('/').pop());
+                if (parsed?.episodes.length) {
+                    episodesOfSeries = episodesOfSeries || await sonarr(`/api/v3/episode?seriesId=${r.seriesId}`);
+                    ids = (episodesOfSeries || [])
+                        .filter(e => e.seasonNumber === parsed.season && parsed.episodes.includes(e.episodeNumber))
+                        .map(e => e.id);
+                }
+            }
+            if (!ids.length) continue;
+            files.push({
+                path: f.path,
+                seriesId: r.seriesId,
+                episodeIds: ids,
+                quality: f.quality || r.quality,
+                languages: f.languages?.length ? f.languages : (r.languages || []),
+                releaseGroup: f.releaseGroup || '',
+                downloadId,
+                indexerFlags: f.indexerFlags || 0
+            });
+        }
+        if (!files.length) continue;
+        await sonarr('/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'ManualImport', importMode: 'auto', files }) });
+        importAttempts.set(downloadId, 99);
+        cache.delete('queue:tv');
+        log('importação automática (Sonarr):', r.title, `${files.length} arquivo(s)`);
+    }
+}
+
+function startAutoImport() {
+    if (!config.autoImportInterval) return;
+    let running = false;
+    const tick = async () => {
+        if (running) return;
+        running = true;
+        try {
+            if (config.radarr.url) await autoImportMovies().catch(err => log('importação automática (Radarr) falhou:', err.message));
+            if (config.sonarr.url) await autoImportEpisodes().catch(err => log('importação automática (Sonarr) falhou:', err.message));
+        } finally {
+            running = false;
+        }
+    };
+    setTimeout(tick, 5000);
+    setInterval(tick, config.autoImportInterval * 1000);
+}
+
 /* ---------------- catalog & search ---------------- */
 
 async function sectionItems(s) {
@@ -1418,4 +1547,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             tmdb: !!config.tmdbKey, radarr: !!config.radarr.url, sonarr: !!config.sonarr.url, prowlarr: !!config.prowlarr.url, qbittorrent: !!config.qbit.url, allowDownload: config.allowDownload
         }));
     });
+    startAutoImport();
 }
