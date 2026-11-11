@@ -1041,6 +1041,8 @@ function normalizeSonarr(r, seriesId) {
         kind: 'tv',
         origin: 'sonarr',
         seriesId,
+        // Sonarr tied it to this series (by name or by the search's TVDB id)
+        mapped: (r.mappedSeriesId ?? r.seriesId) === seriesId,
         guid: r.guid,
         indexerId: r.indexerId,
         indexer: cleanIndexer(r.indexer),
@@ -1113,7 +1115,9 @@ async function tvReleases(tmdbId, season) {
             }) :
         Promise.resolve([]);
 
-    const [ a, b, c ] = await Promise.all([ byId, byText, byTmdb ]);
+    const [ sonarrAll, b, c ] = await Promise.all([ byId, byText, byTmdb ]);
+    // indexers that cannot search by id answer Sonarr's text search with other series ("World War II…" for "War")
+    const a = sonarrAll.filter(x => x.mapped || names.some(n => tvTitleMatches(x.title, n)));
     const extra = [];
     const add = x => {
         if (a.some(y => sameRelease(x, y)) || extra.some(y => sameRelease(x, y))) return;
@@ -1277,52 +1281,106 @@ async function autoImportMovies() {
     }
 }
 
+/** Completed torrents the bridge sent to qBittorrent for a series (tag fp-tv-<tmdb>), by hash. */
+async function taggedTvDownloads() {
+    const out = new Map();
+    if (!config.qbit.url) return out;
+    const list = await qbit('torrents/info?filter=completed').catch(() => []);
+    for (const t of list || []) {
+        const m = /(?:^|,)\s*fp-tv-(\d+)\s*(?=,|$)/.exec(t.tags || '');
+        if (!m || (t.progress ?? 0) < 1 || !t.hash) continue;
+        out.set(String(t.hash).toUpperCase(), {
+            tmdbId: Number(m[1]),
+            path: t.content_path || '',
+            completedAt: (t.completion_on || 0) * 1000
+        });
+    }
+    return out;
+}
+
+async function sonarrSeriesIdFor(tmdbId) {
+    return cached('sonarr-series:' + tmdbId, 10 * 60000, async () => (await sonarrSeriesByTmdb(tmdbId)).series?.id)
+        .catch(() => undefined);
+}
+
+/** Sonarr's ManualImport entries for files it would accept (only name problems, or none). */
+async function episodeImportFiles(items, seriesId, downloadId, queueEpisodeIds, fallback) {
+    const videos = (items || []).filter(f => f.path && (f.size || 0) >= MIN_VIDEO && onlyNameRejections(f));
+    let episodesOfSeries;
+    const files = [];
+    for (const f of videos) {
+        let ids = (f.episodes || []).map(e => e.id).filter(Boolean);
+        if (!ids.length && videos.length === 1) ids = queueEpisodeIds; // one file: the episode(s) Sonarr grabbed it for
+        if (!ids.length) {
+            // names Sonarr could not read: try "S02E05" in the file name
+            const parsed = parseEpisodes(f.path.split('/').pop());
+            if (parsed?.episodes.length) {
+                episodesOfSeries = episodesOfSeries || await sonarr(`/api/v3/episode?seriesId=${seriesId}`);
+                ids = (episodesOfSeries || [])
+                    .filter(e => e.seasonNumber === parsed.season && parsed.episodes.includes(e.episodeNumber))
+                    .map(e => e.id);
+            }
+        }
+        if (!ids.length) continue;
+        files.push({
+            path: f.path,
+            seriesId,
+            episodeIds: ids,
+            quality: f.quality || fallback.quality,
+            languages: f.languages?.length ? f.languages : (fallback.languages || []),
+            releaseGroup: f.releaseGroup || '',
+            downloadId,
+            indexerFlags: f.indexerFlags || 0
+        });
+    }
+    return files;
+}
+
+async function sendEpisodeImport(files, downloadId, title) {
+    await sonarr('/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'ManualImport', importMode: 'auto', files }) });
+    importAttempts.set(downloadId, 99);
+    cache.delete('queue:tv');
+    log('importação automática (Sonarr):', title, `${files.length} arquivo(s)`);
+}
+
+const SONARR_FIRST = 5 * 60000; // a finished download Sonarr does not list: give it this long before importing by path
+
 async function autoImportEpisodes() {
     const q = await sonarr('/api/v3/queue?pageSize=1000&includeSeries=true&includeEpisode=true');
+    const records = q?.records || [];
+    // downloads the bridge sent itself: the tag says which series, even when Sonarr cannot tell ("War"…)
+    const tagged = await taggedTvDownloads();
+    const taggedSeries = async downloadId => {
+        const t = tagged.get(String(downloadId || '').toUpperCase());
+        return t ? sonarrSeriesIdFor(t.tmdbId) : undefined;
+    };
+
     // a season pack appears once per episode: group by download
     const byDownload = new Map();
-    for (const r of q?.records || []) {
-        if (!r.seriesId || !stuckOnName(r)) continue;
+    for (const r of records) {
+        if (!stuckOnName(r)) continue;
         if (!byDownload.has(r.downloadId)) byDownload.set(r.downloadId, { first: r, episodeIds: [] });
         if (r.episodeId) byDownload.get(r.downloadId).episodeIds.push(r.episodeId);
     }
     for (const [ downloadId, { first: r, episodeIds } ] of byDownload) {
-        if (!tryOnce(downloadId)) continue;
-        const items = await sonarr(`/api/v3/manualimport?downloadId=${encodeURIComponent(downloadId)}&seriesId=${r.seriesId}&filterExistingFiles=false`);
-        const videos = (items || []).filter(f => f.path && (f.size || 0) >= MIN_VIDEO && onlyNameRejections(f));
-        if (!videos.length) continue;
-        let episodesOfSeries;
-        const files = [];
-        for (const f of videos) {
-            let ids = (f.episodes || []).map(e => e.id).filter(Boolean);
-            if (!ids.length && videos.length === 1) ids = episodeIds; // one file: the episode(s) Sonarr grabbed it for
-            if (!ids.length) {
-                // several files whose names Sonarr could not read: try "S02E05" in the file name
-                const parsed = parseEpisodes(f.path.split('/').pop());
-                if (parsed?.episodes.length) {
-                    episodesOfSeries = episodesOfSeries || await sonarr(`/api/v3/episode?seriesId=${r.seriesId}`);
-                    ids = (episodesOfSeries || [])
-                        .filter(e => e.seasonNumber === parsed.season && parsed.episodes.includes(e.episodeNumber))
-                        .map(e => e.id);
-                }
-            }
-            if (!ids.length) continue;
-            files.push({
-                path: f.path,
-                seriesId: r.seriesId,
-                episodeIds: ids,
-                quality: f.quality || r.quality,
-                languages: f.languages?.length ? f.languages : (r.languages || []),
-                releaseGroup: f.releaseGroup || '',
-                downloadId,
-                indexerFlags: f.indexerFlags || 0
-            });
-        }
-        if (!files.length) continue;
-        await sonarr('/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'ManualImport', importMode: 'auto', files }) });
-        importAttempts.set(downloadId, 99);
-        cache.delete('queue:tv');
-        log('importação automática (Sonarr):', r.title, `${files.length} arquivo(s)`);
+        const seriesId = r.seriesId || await taggedSeries(downloadId);
+        if (!seriesId || !tryOnce(downloadId)) continue;
+        const items = await sonarr(`/api/v3/manualimport?downloadId=${encodeURIComponent(downloadId)}&seriesId=${seriesId}&filterExistingFiles=false`);
+        const files = await episodeImportFiles(items, seriesId, downloadId, episodeIds, r);
+        if (files.length) await sendEpisodeImport(files, downloadId, r.title);
+    }
+
+    // finished downloads Sonarr does not list at all (another category…): import them by path
+    const listed = new Set(records.map(r => String(r.downloadId || '').toUpperCase()));
+    for (const [ hash, t ] of tagged) {
+        if (listed.has(hash) || !t.path || Date.now() - t.completedAt < SONARR_FIRST) continue;
+        if (!tryOnce(hash)) continue;
+        const seriesId = await sonarrSeriesIdFor(t.tmdbId);
+        if (!seriesId) continue;
+        const items = await sonarr(`/api/v3/manualimport?folder=${encodeURIComponent(t.path)}&seriesId=${seriesId}&filterExistingFiles=true`);
+        // anything already imported comes back rejected ("not an upgrade") and is left alone
+        const files = await episodeImportFiles(items, seriesId, hash, [], {});
+        if (files.length) await sendEpisodeImport(files, hash, t.path.split('/').pop());
     }
 }
 
