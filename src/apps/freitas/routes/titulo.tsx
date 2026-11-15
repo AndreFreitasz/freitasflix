@@ -141,13 +141,21 @@ function useSeriesDownload(item: BaseItemDto) {
 }
 
 /** "Baixar episódios · faltam N": one click opens the options right on this page. */
-const SeriesDownloadButton: FC<{ missing: number, onClick: () => void }> = ({ missing, onClick }) => (
-    <button type='button' className='fp-btn-play fp-btn-play--alt fp-btn-dl' onClick={onClick}>
-        <Icon name='download' size={22} className='' />
-        <span>Baixar episódios</span>
-        {missing > 0 && <span className='fp-btn-dl__count'>faltam {missing}</span>}
-    </button>
-);
+const SeriesDownloadButton: FC<{ missing: number, onClick: () => void, focusOnTv?: boolean }> = ({ missing, onClick, focusOnTv }) => {
+    const ref = useRef<HTMLButtonElement>(null);
+    const restoring = useIsRestoring();
+    useEffect(() => {
+        // nothing to play: the remote starts here
+        if (focusOnTv && layoutManager.tv && !restoring) ref.current?.focus();
+    }, [ focusOnTv, restoring ]);
+    return (
+        <button ref={ref} type='button' className='fp-btn-play fp-btn-play--alt fp-btn-dl' onClick={onClick}>
+            <Icon name='download' size={22} className='' />
+            <span>Baixar episódios</span>
+            {missing > 0 && <span className='fp-btn-dl__count'>faltam {missing}</span>}
+        </button>
+    );
+};
 
 export const BackButton: FC = () => {
     const onClick = useCallback(() => {
@@ -369,9 +377,11 @@ interface TitleHeroProps {
     techItem?: BaseItemDto | null
     /** series: missing episodes and the action that opens the download options */
     download?: { missing: number, onClick: () => void }
+    /** a series folder with no episode files yet: nothing to play */
+    noEpisodes?: boolean
 }
 
-const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem, download }) => {
+const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem, download, noEpisodes }) => {
     const { api } = useApi();
     const backdrop = imageUrl(api, item, ImageType.Backdrop, backdropWidth(720), 2400);
     const h = itemHue(item);
@@ -401,14 +411,19 @@ const TitleHero: FC<TitleHeroProps> = ({ item, playTarget, playLabel, techItem, 
                     <TechChips item={techItem} />
                 </div>
                 {item.Overview && <p className='fp-hero__syn fp-hero__syn--wide'>{item.Overview}</p>}
+                {noEpisodes && (
+                    <p className='fp-noeps'>
+                        Nenhum episódio no servidor ainda.{download ? ' Use “Baixar episódios” para trazer a série.' : ''}
+                    </p>
+                )}
                 <div className='fp-actions-row' data-nav-group=''>
-                    <PlayButton target={playTarget} label={playLabel} focusOnTv tracks={trackSel.tracks} />
+                    {!noEpisodes && <PlayButton target={playTarget} label={playLabel} focusOnTv tracks={trackSel.tracks} />}
                     <ListButton item={item} />
                     <FavoriteButton item={item} />
                     <TrailerButton item={item} />
-                    {download && <SeriesDownloadButton missing={download.missing} onClick={download.onClick} />}
+                    {download && <SeriesDownloadButton missing={download.missing} onClick={download.onClick} focusOnTv={noEpisodes} />}
                 </div>
-                <TrackPickers sel={trackSel} />
+                {!noEpisodes && <TrackPickers sel={trackSel} />}
             </div>
         </section>
     );
@@ -476,7 +491,14 @@ const TitleView: FC<{ item: BaseItemDto }> = ({ item }) => {
 
     return (
         <>
-            <TitleHero item={item} playTarget={playTarget} playLabel={playLabel} techItem={isSeries ? firstEpFull : item} download={heroDownload} />
+            <TitleHero
+                item={item}
+                playTarget={playTarget}
+                playLabel={playLabel}
+                techItem={isSeries ? firstEpFull : item}
+                download={heroDownload}
+                noEpisodes={isSeries && firstEp === null}
+            />
 
             <main className='fp-title-main'>
                 <div className='fp-info fp-pad'>

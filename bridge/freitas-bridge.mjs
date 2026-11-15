@@ -1281,11 +1281,19 @@ async function autoImportMovies() {
     }
 }
 
+let lastQbitImportError = '';
+
 /** Completed torrents the bridge sent to qBittorrent for a series (tag fp-tv-<tmdb>), by hash. */
 async function taggedTvDownloads() {
     const out = new Map();
     if (!config.qbit.url) return out;
-    const list = await qbit('torrents/info?filter=completed').catch(() => []);
+    const list = await qbit('torrents/info?filter=completed').catch(err => {
+        // without qBittorrent the downloads the bridge sent cannot be found: say so (once per error)
+        if (lastQbitImportError !== err.message) log('importação automática: qBittorrent indisponível —', err.message);
+        lastQbitImportError = err.message;
+        return null;
+    });
+    if (list) lastQbitImportError = '';
     for (const t of list || []) {
         const m = /(?:^|,)\s*fp-tv-(\d+)\s*(?=,|$)/.exec(t.tags || '');
         if (!m || (t.progress ?? 0) < 1 || !t.hash) continue;
@@ -1301,6 +1309,17 @@ async function taggedTvDownloads() {
 async function sonarrSeriesIdFor(tmdbId) {
     return cached('sonarr-series:' + tmdbId, 10 * 60000, async () => (await sonarrSeriesByTmdb(tmdbId)).series?.id)
         .catch(() => undefined);
+}
+
+/** Why Sonarr would not import any of these files (for the log). */
+function importRefusal(items) {
+    if (!items?.length) return 'o Sonarr não encontrou vídeo nesse caminho';
+    const reasons = new Set();
+    for (const f of items) {
+        for (const r of f.rejections || []) reasons.add(typeof r === 'string' ? r : r.reason);
+        if (!f.rejections?.length && !f.episodes?.length) reasons.add('episódio não identificado');
+    }
+    return [ ...reasons ].filter(Boolean).join('; ') || 'motivo desconhecido';
 }
 
 /** Sonarr's ManualImport entries for files it would accept (only name problems, or none). */
@@ -1368,6 +1387,7 @@ async function autoImportEpisodes() {
         const items = await sonarr(`/api/v3/manualimport?downloadId=${encodeURIComponent(downloadId)}&seriesId=${seriesId}&filterExistingFiles=false`);
         const files = await episodeImportFiles(items, seriesId, downloadId, episodeIds, r);
         if (files.length) await sendEpisodeImport(files, downloadId, r.title);
+        else log('importação automática (Sonarr): não importei', r.title, '—', importRefusal(items));
     }
 
     // finished downloads Sonarr does not list at all (another category…): import them by path
@@ -1376,11 +1396,15 @@ async function autoImportEpisodes() {
         if (listed.has(hash) || !t.path || Date.now() - t.completedAt < SONARR_FIRST) continue;
         if (!tryOnce(hash)) continue;
         const seriesId = await sonarrSeriesIdFor(t.tmdbId);
-        if (!seriesId) continue;
+        if (!seriesId) {
+            log('importação automática (Sonarr): série TMDB', t.tmdbId, 'não está no Sonarr —', t.path);
+            continue;
+        }
         const items = await sonarr(`/api/v3/manualimport?folder=${encodeURIComponent(t.path)}&seriesId=${seriesId}&filterExistingFiles=true`);
         // anything already imported comes back rejected ("not an upgrade") and is left alone
         const files = await episodeImportFiles(items, seriesId, hash, [], {});
         if (files.length) await sendEpisodeImport(files, hash, t.path.split('/').pop());
+        else if (importAttempts.get(hash) === 1) log('importação automática (Sonarr): não importei', t.path.split('/').pop(), '—', importRefusal(items));
     }
 }
 
