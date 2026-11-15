@@ -1254,7 +1254,8 @@ function tryOnce(downloadId) {
 async function autoImportMovies() {
     const q = await radarr('/api/v3/queue?pageSize=500&includeMovie=true');
     for (const r of q?.records || []) {
-        if (!r.movieId || !stuckOnName(r) || !tryOnce(r.downloadId)) continue;
+        // a movie already in the library is left alone: importing again would replace the file Jellyfin plays
+        if (!r.movieId || r.movie?.hasFile || !stuckOnName(r) || !tryOnce(r.downloadId)) continue;
         const items = await radarr(`/api/v3/manualimport?downloadId=${encodeURIComponent(r.downloadId)}&movieId=${r.movieId}&filterExistingFiles=false`);
         const videos = (items || []).filter(f => f.path && (f.size || 0) >= MIN_VIDEO && onlyNameRejections(f));
         if (!videos.length) continue;
@@ -1263,7 +1264,8 @@ async function autoImportMovies() {
             method: 'POST',
             body: JSON.stringify({
                 name: 'ManualImport',
-                importMode: 'auto', // the download client's setting: hardlink/copy while seeding
+                // never move: the torrent keeps seeding and nothing already in the library is touched
+                importMode: 'copy',
                 files: [ {
                     path: main.path,
                     movieId: r.movieId,
@@ -1325,7 +1327,10 @@ function importRefusal(items) {
 /** Sonarr's ManualImport entries for files it would accept (only name problems, or none). */
 async function episodeImportFiles(items, seriesId, downloadId, queueEpisodeIds, fallback) {
     const videos = (items || []).filter(f => f.path && (f.size || 0) >= MIN_VIDEO && onlyNameRejections(f));
-    let episodesOfSeries;
+    if (!videos.length) return [];
+    // what the library already has: importing those again would replace the file Jellyfin plays
+    const episodesOfSeries = await sonarr(`/api/v3/episode?seriesId=${seriesId}`) || [];
+    const hasFile = new Set(episodesOfSeries.filter(e => e.hasFile).map(e => e.id));
     const files = [];
     for (const f of videos) {
         let ids = (f.episodes || []).map(e => e.id).filter(Boolean);
@@ -1334,13 +1339,13 @@ async function episodeImportFiles(items, seriesId, downloadId, queueEpisodeIds, 
             // names Sonarr could not read: try "S02E05" in the file name
             const parsed = parseEpisodes(f.path.split('/').pop());
             if (parsed?.episodes.length) {
-                episodesOfSeries = episodesOfSeries || await sonarr(`/api/v3/episode?seriesId=${seriesId}`);
-                ids = (episodesOfSeries || [])
+                ids = episodesOfSeries
                     .filter(e => e.seasonNumber === parsed.season && parsed.episodes.includes(e.episodeNumber))
                     .map(e => e.id);
             }
         }
-        if (!ids.length) continue;
+        // also skip episodes another download already brought in this round (two torrents, same episode)
+        if (!ids.length || ids.every(id => hasFile.has(id) || sentEpisodes.has(id))) continue;
         files.push({
             path: f.path,
             seriesId,
@@ -1355,8 +1360,12 @@ async function episodeImportFiles(items, seriesId, downloadId, queueEpisodeIds, 
     return files;
 }
 
+const sentEpisodes = new Set();
+
 async function sendEpisodeImport(files, downloadId, title) {
-    await sonarr('/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'ManualImport', importMode: 'auto', files }) });
+    for (const f of files) f.episodeIds.forEach(id => sentEpisodes.add(id));
+    // never move: the torrent keeps seeding and nothing already in the library is touched
+    await sonarr('/api/v3/command', { method: 'POST', body: JSON.stringify({ name: 'ManualImport', importMode: 'copy', files }) });
     importAttempts.set(downloadId, 99);
     cache.delete('queue:tv');
     log('importação automática (Sonarr):', title, `${files.length} arquivo(s)`);
