@@ -27,11 +27,13 @@
 }
 
 .layout-tv {
-    --fpu: 1.3125px;
+    /* the TV design is drawn for a 1920-wide screen: scale it to the real one (Fire TV sees ~960) */
+    --fpu: calc(100vw / 1463);
 }
 
 @media (max-width: 700px) {
-    :root {
+    /* phones (not TVs); stronger than :root so it wins */
+    html:not(.layout-tv) {
         --fpu: 0.9375px;
     }
 }
@@ -106,8 +108,11 @@ body.fp-route .mainDrawerHandle {
 }
 
 @media (max-width: 700px) {
-    .fp-root {
-        padding-bottom: calc(#{u(96)} + env(safe-area-inset-bottom, 0px));
+    /* not on TVs: a TV browser can report a narrow screen (Fire TV ~960) */
+    :where(html:not(.layout-tv)) {
+        .fp-root {
+            padding-bottom: calc(#{u(96)} + env(safe-area-inset-bottom, 0px));
+        }
     }
 }
 
@@ -163,9 +168,12 @@ body.fp-route .mainDrawerHandle {
 }
 
 @media (max-width: 700px) {
-    .fp-pad {
-        padding-left: u(16);
-        padding-right: u(16);
+    /* not on TVs: a TV browser can report a narrow screen (Fire TV ~960) */
+    :where(html:not(.layout-tv)) {
+        .fp-pad {
+            padding-left: u(16);
+            padding-right: u(16);
+        }
     }
 }
 
@@ -411,51 +419,57 @@ body.fp-route .mainDrawerHandle {
 }
 
 @media (max-width: 1100px) {
-    .fp-nav__label {
-        display: none;
-    }
+    /* not on TVs: a TV browser can report a narrow screen (Fire TV ~960) */
+    :where(html:not(.layout-tv)) {
+        .fp-nav__label {
+            display: none;
+        }
 
-    .fp-nav__item {
-        padding: 0 u(14);
+        .fp-nav__item {
+            padding: 0 u(14);
 
-        .fp-icon {
-            margin-right: 0;
+            .fp-icon {
+                margin-right: 0;
+            }
         }
     }
 }
 
 /* Phones: logo + search + avatar on top, navigation as a floating bar at the bottom */
 @media (max-width: 700px) {
-    .fp-header {
-        grid-template-columns: auto 1fr;
-        padding: 0 u(16);
-        height: u(64);
-    }
+    /* not on TVs: a TV browser can report a narrow screen (Fire TV ~960) */
+    :where(html:not(.layout-tv)) {
+        .fp-header {
+            grid-template-columns: auto 1fr;
+            padding: 0 u(16);
+            height: u(64);
+        }
 
-    .fp-logo {
-        height: u(26);
-    }
+        .fp-logo {
+            height: u(26);
+        }
 
-    .fp-action--extra {
-        display: none;
-    }
+        .fp-action--extra {
+            display: none;
+        }
 
-    .fp-nav {
-        position: fixed;
-        justify-self: stretch;
-        left: u(12);
-        right: u(12);
-        bottom: calc(#{u(12)} + env(safe-area-inset-bottom, 0px));
-        justify-content: space-around;
-        z-index: 999;
-    }
+        .fp-nav {
+            position: fixed;
+            justify-self: stretch;
+            left: u(12);
+            right: u(12);
+            bottom: calc(#{u(12)} + env(safe-area-inset-bottom, 0px));
+            justify-content: space-around;
+            z-index: 999;
+        }
 
-    .fp-nav__item {
-        flex: 1 1 0;
-        justify-content: center;
-        height: u(48);
-        margin-right: 0;
-        padding: 0;
+        .fp-nav__item {
+            flex: 1 1 0;
+            justify-content: center;
+            height: u(48);
+            margin-right: 0;
+            padding: 0;
+        }
     }
 }
 
@@ -1684,108 +1698,114 @@ body.fp-route .mainDrawerHandle {
 /* ---------- Tablets & phones ---------- */
 
 @media (max-width: 1000px) {
-    .fp-ep {
-        grid-template-columns: u(36) u(160) 1fr;
-    }
+    /* not on TVs: a TV browser can report a narrow screen (Fire TV ~960) */
+    :where(html:not(.layout-tv)) {
+        .fp-ep {
+            grid-template-columns: u(36) u(160) 1fr;
+        }
 
-    .fp-ep__dur {
-        display: none;
-    }
+        .fp-ep__dur {
+            display: none;
+        }
 
-    .fp-ep__meta-dur {
-        display: inline;
-    }
+        .fp-ep__meta-dur {
+            display: inline;
+        }
 
-    .fp-hero__img {
-        width: 100%;
-        mask-image: none;
-        opacity: 0.55;
+        .fp-hero__img {
+            width: 100%;
+            mask-image: none;
+            opacity: 0.55;
+        }
     }
 }
 
 @media (max-width: 700px) {
-    .fp-hero {
-        min-height: u(620);
-    }
+    /* not on TVs: a TV browser can report a narrow screen (Fire TV ~960) */
+    :where(html:not(.layout-tv)) {
+        .fp-hero {
+            min-height: u(620);
+        }
 
-    .fp-hero--home,
-    .fp-hero--empty {
-        height: u(640);
-        min-height: 0;
-    }
+        .fp-hero--home,
+        .fp-hero--empty {
+            height: u(640);
+            min-height: 0;
+        }
 
-    .fp-hero__body {
-        padding-top: u(96);
-        padding-bottom: u(150);
-    }
+        .fp-hero__body {
+            padding-top: u(96);
+            padding-bottom: u(150);
+        }
 
-    .fp-hero__titlebox {
-        min-height: u(110);
-    }
+        .fp-hero__titlebox {
+            min-height: u(110);
+        }
 
-    .fp-hero__body--title {
-        padding-top: u(16);
-        padding-bottom: u(40);
-    }
+        .fp-hero__body--title {
+            padding-top: u(16);
+            padding-bottom: u(40);
+        }
 
-    .fp-title-art__lead {
-        font-size: u(18);
-    }
+        .fp-title-art__lead {
+            font-size: u(18);
+        }
 
-    .fp-title-art__main {
-        font-size: u(64);
-    }
+        .fp-title-art__main {
+            font-size: u(64);
+        }
 
-    .fp-title-art__main--long {
-        font-size: u(46);
-    }
+        .fp-title-art__main--long {
+            font-size: u(46);
+        }
 
-    .fp-title-art__main--xlong {
-        font-size: u(34);
-    }
+        .fp-title-art__main--xlong {
+            font-size: u(34);
+        }
 
-    .fp-title-art--logo img {
-        max-height: u(120);
-    }
+        .fp-title-art--logo img {
+            max-height: u(120);
+        }
 
-    .fp-hero__syn {
-        font-size: u(16);
-        line-height: u(24);
-    }
+        .fp-hero__syn {
+            font-size: u(16);
+            line-height: u(24);
+        }
 
-    .fp-hero__dots {
-        right: u(8);
-        bottom: u(96);
-    }
+        .fp-hero__dots {
+            right: u(8);
+            bottom: u(96);
+        }
 
-    .fp-card--poster {
-        width: u(148);
-    }
+        .fp-card--poster {
+            width: u(148);
+        }
 
-    .fp-card--wide {
-        width: u(260);
-    }
+        .fp-card--wide {
+            width: u(260);
+        }
 
-    .fp-card--rank {
-        width: u(210);
-    }
+        .fp-card--rank {
+            width: u(210);
+        }
 
-    .fp-rows {
-        margin-top: u(-100);
-    }
+        .fp-rows {
+            margin-top: u(-100);
+        }
 
-    .fp-ep {
-        grid-template-columns: u(120) 1fr;
-        grid-column-gap: u(14);
-        padding: u(10) u(8);
-    }
+        .fp-ep {
+            grid-template-columns: u(120) 1fr;
+            grid-column-gap: u(14);
+            padding: u(10) u(8);
+        }
 
-    .fp-ep__num {
-        display: none;
-    }
+        .fp-ep__num {
+            display: none;
+        }
 
-    .fp-back-wrap {
-        padding-top: calc(#{u(64)} + #{u(12)});
+        .fp-back-wrap {
+            padding-top: calc(#{u(64)} + #{u(12)});
+        }
     }
 }
 
@@ -2705,18 +2725,21 @@ body.fp-route .mainDrawerHandle {
 }
 
 @media (max-width: 600px) {
-    .fp-search .fp-btn-ghost {
-        width: u(44);
-        height: u(44);
-        justify-content: center;
-        padding: 0;
+    /* not on TVs: a TV browser can report a narrow screen (Fire TV ~960) */
+    :where(html:not(.layout-tv)) {
+        .fp-search .fp-btn-ghost {
+            width: u(44);
+            height: u(44);
+            justify-content: center;
+            padding: 0;
 
-        span {
-            display: none;
-        }
+            span {
+                display: none;
+            }
 
-        svg {
-            margin-right: 0;
+            svg {
+                margin-right: 0;
+            }
         }
     }
 }
